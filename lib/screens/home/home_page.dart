@@ -6,23 +6,26 @@ import '../../screens/home/widgets/current_delivery_card.dart';
 import '../../screens/home/widgets/stats_card.dart';
 import '../../models/delivery_model.dart';
 import 'widgets/upcoming_tile.dart';
+import '../auth/auth_controller.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final controller = context.watch<HomeController>();
+    final home = context.watch<HomeController>();
+    final auth = context.watch<AuthController>(); // Firebase user
 
-    final DeliveryModel? current = controller.currentDelivery;
-    final List<DeliveryModel> upcoming = controller.upcomingDeliveries;
+    final DeliveryModel? current = home.currentDelivery;
+    final List<DeliveryModel> upcoming = home.upcomingDeliveries;
 
-    final total = controller.totalCount;
-    final completed = controller.completedCount;
-    final pending = controller.pendingCount;
-    final cancelled = controller.cancelledCount;
-    final userName = controller.userName;
-    final isOnline = controller.isOnline;
+    final total = home.totalCount;
+    final completed = home.completedCount;
+    final pending = home.pendingCount;
+    final cancelled = home.cancelledCount;
+    final isOnline = home.isOnline;
+
+    final userName = auth.user?.name ?? 'Delivery Partner';
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -59,7 +62,7 @@ class HomePage extends StatelessWidget {
                 children: [
                   const CircleAvatar(
                     radius: 24,
-                    backgroundColor: Colors.purpleAccent,
+                    backgroundColor: Colors.lightBlueAccent,
                   ),
                   const SizedBox(width: 12),
                   Column(
@@ -80,52 +83,58 @@ class HomePage extends StatelessWidget {
                     ],
                   ),
                   const Spacer(),
-        GestureDetector(
-          onTap: controller.toggleOnline,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: isOnline ? Colors.green.shade600 : Colors.red.shade600,
-              borderRadius: BorderRadius.circular(25),
-              boxShadow: [
-                BoxShadow(
-                  color: (isOnline ? Colors.green : Colors.red).withOpacity(0.4),
-                  blurRadius: 6,
-                  offset: const Offset(0, 3),
-                )
-              ],
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isOnline ? Icons.flash_on : Icons.flash_off,
-                  size: 16,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  isOnline ? 'Online' : 'Offline',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
+                  GestureDetector(
+                    onTap: home.toggleOnline,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: isOnline
+                            ? Colors.green.shade600
+                            : Colors.red.shade600,
+                        borderRadius: BorderRadius.circular(25),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (isOnline ? Colors.green : Colors.red)
+                                .withOpacity(0.4),
+                            blurRadius: 6,
+                            offset: const Offset(0, 3),
+                          )
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            isOnline ? Icons.flash_on : Icons.flash_off,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            isOnline ? 'Online' : 'Offline',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 300),
+                            child: Icon(
+                              isOnline
+                                  ? Icons.check_circle
+                                  : Icons.pause_circle_filled,
+                              key: ValueKey(isOnline),
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: Icon(
-                    isOnline ? Icons.check_circle : Icons.pause_circle_filled,
-                    key: ValueKey(isOnline),
-                    size: 16,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
                 ],
               ),
             ),
@@ -319,12 +328,9 @@ class HomePage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-
-          // List of upcoming deliveries
           Column(
-            children: upcoming
-                .map((d) => UpcomingTile(delivery: d))
-                .toList(),
+            children:
+            upcoming.map((d) => UpcomingTile(delivery: d)).toList(),
           ),
         ],
       ),

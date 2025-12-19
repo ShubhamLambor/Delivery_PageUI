@@ -2,36 +2,36 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import '../../../widgets/online_status_button.dart';
+import 'package:provider/provider.dart';
+import '../../auth/auth_controller.dart';
 
 class ProfileHeader extends StatelessWidget {
-  final String name;
   final String memberSince;
   final String location;
-  final String? imageUrl;
   final VoidCallback? onChangePhoto;
 
   const ProfileHeader({
     super.key,
-    required this.name,
     required this.memberSince,
     required this.location,
-    this.imageUrl,
     this.onChangePhoto,
   });
 
   @override
   Widget build(BuildContext context) {
-    ImageProvider avatarProvider;
+    final auth = context.watch<AuthController>();
+    final user = auth.user;
 
-    if (imageUrl == null || imageUrl!.isEmpty) {
+    final String name = user?.name ?? 'Delivery Partner';
+    final String? imageUrl = user?.profilePic;
+
+    ImageProvider avatarProvider;
+    if (imageUrl == null || imageUrl.isEmpty) {
       avatarProvider = const AssetImage('assets/default_avatar.png');
-    } else if (imageUrl!.startsWith('http')) {
-      // network image from backend
-      avatarProvider = NetworkImage(imageUrl!);
+    } else if (imageUrl.startsWith('http')) {
+      avatarProvider = NetworkImage(imageUrl);
     } else {
-      // local file path from image_picker
-      avatarProvider = FileImage(File(imageUrl!));
+      avatarProvider = FileImage(File(imageUrl));
     }
 
     return Container(
@@ -71,9 +71,7 @@ class ProfileHeader extends StatelessWidget {
                 ),
             ],
           ),
-
           const SizedBox(width: 16),
-
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,9 +109,6 @@ class ProfileHeader extends StatelessWidget {
               ],
             ),
           ),
-
-          /// You can still show OnlineStatusButton here if you want
-          // const OnlineStatusButton(),
         ],
       ),
     );

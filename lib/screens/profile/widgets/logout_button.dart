@@ -10,7 +10,7 @@ class LogoutButton extends StatelessWidget {
     return ElevatedButton(
       onPressed: onLogout,
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.red.shade400,
+        backgroundColor: Colors.red.shade300,
         foregroundColor: Colors.white,
         padding: EdgeInsets.symmetric(vertical: 14),
         shape: RoundedRectangleBorder(

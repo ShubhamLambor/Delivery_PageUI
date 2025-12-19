@@ -1,10 +1,11 @@
 // lib/screens/profile/profile_page.dart
-import 'package:deliveryui/screens/profile/profile_controller.dart';
-import 'package:deliveryui/screens/profile/widgets/logout_button.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'profile_controller.dart';
 import '../auth/login_page.dart';
+import 'widgets/logout_button.dart';
 import 'widgets/profile_header.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -44,12 +45,12 @@ class ProfilePage extends StatelessWidget {
             child: Column(
               children: [
                 ProfileHeader(
-                  name: controller.name,
-                  memberSince: 'Dec 2025',
-                  location: controller.email,
-                  imageUrl: controller.profilePic,
-                  onChangePhoto: () => controller.changeProfilePhoto(context),
+                  memberSince: 'Dec 2025',          // dummy
+                  location: 'Mumbai, India',        // dummy
+                  onChangePhoto: () =>
+                      controller.changeProfilePhoto(context), // <-- added
                 ),
+
                 const SizedBox(height: 16),
 
                 ElevatedButton(
@@ -63,8 +64,6 @@ class ProfilePage extends StatelessWidget {
                 ),
 
                 const SizedBox(height: 16),
-
-                // your other tiles / options here...
 
                 const SizedBox(height: 20),
                 SizedBox(
@@ -84,11 +83,12 @@ class ProfilePage extends StatelessWidget {
                       );
 
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Logged out successfully')),
+                        const SnackBar(
+                          content: Text('Logged out successfully'),
+                        ),
                       );
                     },
                   ),
-
                 ),
               ],
             ),

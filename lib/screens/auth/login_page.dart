@@ -1,28 +1,15 @@
+// lib/screens/auth/login_page.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../data/repository/user_repository.dart';
 import '../nav/bottom_nav.dart';
 import 'auth_controller.dart';
+import 'signup_page.dart';
 import 'widgets/login_form.dart';
 
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AuthController(
-        userRepository: UserRepository(baseUrl:"http://localhost/tiffin_api/api/login.php"),
-      ),
-      child: const _LoginView(),
-    );
-  }
-}
-
-class _LoginView extends StatelessWidget {
-  const _LoginView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +40,12 @@ class _LoginView extends StatelessWidget {
                   SnackBar(content: Text(error)),
                 );
               }
+            },
+            onTapRegister: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SignupPage()),
+              );
             },
           ),
         ),

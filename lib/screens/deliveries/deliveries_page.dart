@@ -38,11 +38,11 @@ class DeliveriesPage extends StatelessWidget {
             Row(
               children: [
                 _chip(context, 'All'),
-                const SizedBox(width: 8),
+                const SizedBox(width: 5),
                 _chip(context, 'Pending'),
-                const SizedBox(width: 8),
+                const SizedBox(width: 5),
                 _chip(context, 'Completed'),
-                const SizedBox(width: 8),
+                const SizedBox(width: 5),
                 _chip(context, 'Cancelled'),
               ],
             ),

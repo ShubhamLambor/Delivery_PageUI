@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 
 class LoginForm extends StatefulWidget {
   final Future<void> Function(String email, String password) onSubmit;
+  final VoidCallback? onTapRegister;
   final bool loading;
 
   const LoginForm({
     super.key,
     required this.onSubmit,
+    this.onTapRegister,
     this.loading = false,
   });
 
@@ -195,14 +197,17 @@ class _LoginFormState extends State<LoginForm> {
                           const SizedBox(height: 20),
                           Center(
                             child: Column(
-                              children: const [
-                                Text('New to Tiffinity?'),
-                                SizedBox(height: 6),
-                                Text(
-                                  'Register as a Delivery Partner',
-                                  style: TextStyle(
-                                    color: Colors.orange,
-                                    fontWeight: FontWeight.w600,
+                              children: [
+                                const Text('New to Tiffinity?'),
+                                const SizedBox(height: 6),
+                                GestureDetector(
+                                  onTap: widget.onTapRegister,
+                                  child: const Text(
+                                    'Register as a Delivery Partner',
+                                    style: TextStyle(
+                                      color: Colors.orange,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ],
