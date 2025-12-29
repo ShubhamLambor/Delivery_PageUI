@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
@@ -9,13 +10,136 @@ import '../../models/delivery_model.dart';
 import 'widgets/upcoming_tile.dart';
 import '../auth/auth_controller.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  @override
+  void initState() {
+    super.initState();
+    // Request location permission when page loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestLocationPermission();
+    });
+  }
+
+  Future<void> _requestLocationPermission() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    // Check if location services are enabled
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (mounted) {
+        _showLocationServiceDialog();
+      }
+      return;
+    }
+
+    // Check permission status
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        if (mounted) {
+          _showPermissionDeniedDialog();
+        }
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) {
+        _showPermissionPermanentlyDeniedDialog();
+      }
+      return;
+    }
+
+    // Permission granted
+    if (permission == LocationPermission.whileInUse ||
+        permission == LocationPermission.always) {
+      // You can get location here if needed
+      // Position position = await Geolocator.getCurrentPosition();
+      debugPrint("Location permission granted");
+    }
+  }
+
+  void _showLocationServiceDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Location Services Disabled'),
+        content: const Text(
+          'Please enable location services to track deliveries.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPermissionDeniedDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Location Permission Required'),
+        content: const Text(
+          'This app needs location access to track your delivery routes and provide accurate navigation.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _requestLocationPermission();
+            },
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPermissionPermanentlyDeniedDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Location Permission Denied'),
+        content: const Text(
+          'Location permission is permanently denied. Please enable it from app settings to use delivery tracking features.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Geolocator.openAppSettings();
+              Navigator.pop(context);
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final home = context.watch<HomeController>();
-    final auth = context.watch<AuthController>(); // Firebase user
+    final auth = context.watch<AuthController>();
 
     final DeliveryModel? current = home.currentDelivery;
     final List<DeliveryModel> upcoming = home.upcomingDeliveries;
@@ -343,12 +467,11 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width - 32; // minus padding
+    final screenWidth = MediaQuery.of(context).size.width - 32;
     final trackWidth = screenWidth;
     final thumbWidth = screenWidth / 2 - 4;
     final maxDrag = trackWidth - thumbWidth - 4;
 
-    // Calculate position based on state
     final targetPosition = widget.isOnline ? maxDrag : 0.0;
     final currentPosition = _isDragging ? _dragPosition : targetPosition;
 
@@ -361,7 +484,6 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
       ),
       child: Stack(
         children: [
-          // Background labels
           Row(
             children: [
               Expanded(
@@ -390,7 +512,6 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
               ),
             ],
           ),
-          // Draggable sliding button
           AnimatedPositioned(
             duration: _isDragging
                 ? Duration.zero
@@ -416,14 +537,11 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
                   _isDragging = false;
                 });
 
-                // Determine if toggle should happen
                 if (_dragPosition > maxDrag / 2) {
-                  // Swiped to right (Online)
                   if (!widget.isOnline) {
                     widget.onToggle();
                   }
                 } else {
-                  // Swiped to left (Offline)
                   if (widget.isOnline) {
                     widget.onToggle();
                   }

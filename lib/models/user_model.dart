@@ -1,9 +1,11 @@
+// lib/models/user_model.dart
 class UserModel {
   final int id;
   final String name;
   final String email;
   final String phone;
   final String profilePic;
+  final String role;
 
   UserModel({
     required this.id,
@@ -11,18 +13,17 @@ class UserModel {
     required this.email,
     required this.phone,
     required this.profilePic,
+    this.role = 'delivery_partner', // ✅ Changed from 'customer' to 'delivery_partner'
   });
 
-  // -----------------------------
-  // JSON → UserModel
-  // -----------------------------
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
       id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
       name: json['name'] ?? "",
       email: json['email'] ?? "",
       phone: json['phone'] ?? "",
-      profilePic: json['profilePic'] ?? "",
+      profilePic: json['profilePic'] ?? json['profile_pic'] ?? "",
+      role: json['role'] ?? 'delivery_partner', // ✅ Changed default
     );
   }
 
@@ -36,6 +37,7 @@ class UserModel {
       "email": email,
       "phone": phone,
       "profilePic": profilePic,
+      "role": role,
     };
   }
 
@@ -48,6 +50,7 @@ class UserModel {
     String? email,
     String? phone,
     String? profilePic,
+    String? role,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -55,6 +58,7 @@ class UserModel {
       email: email ?? this.email,
       phone: phone ?? this.phone,
       profilePic: profilePic ?? this.profilePic,
+      role: role ?? this.role,
     );
   }
 }
