@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../../models/delivery_model.dart';
+import '../../map/osm_navigation_screen.dart';
 
 class CurrentDeliveryCard extends StatelessWidget {
   final DeliveryModel delivery;
-  final VoidCallback? onNavigate;
   final VoidCallback? onCall;
   final VoidCallback? onDelivered;
   final VoidCallback? onCancel;
@@ -11,11 +11,23 @@ class CurrentDeliveryCard extends StatelessWidget {
   const CurrentDeliveryCard({
     super.key,
     required this.delivery,
-    this.onNavigate,
     this.onCall,
     this.onDelivered,
     this.onCancel,
   });
+
+  Future<void> _handleNavigation(BuildContext context) async {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OSMNavigationScreen(
+          destinationLat: delivery.latitude,
+          destinationLng: delivery.longitude,
+          destinationName: delivery.customerName,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +48,6 @@ class CurrentDeliveryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 👤 Customer Name
           Text(
             delivery.customerName,
             style: const TextStyle(
@@ -44,10 +55,7 @@ class CurrentDeliveryCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-
           const SizedBox(height: 10),
-
-          // 📍 Address
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -62,10 +70,7 @@ class CurrentDeliveryCard extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 8),
-
-          // ⏱ ETA & Item
           Row(
             children: [
               const Icon(Icons.access_time,
@@ -79,17 +84,14 @@ class CurrentDeliveryCard extends StatelessWidget {
               Text(delivery.item),
             ],
           ),
-
           const SizedBox(height: 16),
-
-          // 🔘 Top Actions
           Row(
             children: [
               _smallActionButton(
                 icon: Icons.navigation,
                 label: 'Navigate',
                 color: Colors.blue,
-                onTap: onNavigate,
+                onTap: () => _handleNavigation(context),
               ),
               const SizedBox(width: 12),
               _smallActionButton(
@@ -100,10 +102,7 @@ class CurrentDeliveryCard extends StatelessWidget {
               ),
             ],
           ),
-
           const SizedBox(height: 12),
-
-          // 🔘 Bottom Actions
           Row(
             children: [
               _primaryButton(
@@ -124,7 +123,6 @@ class CurrentDeliveryCard extends StatelessWidget {
     );
   }
 
-  // 🔹 Small action button
   Widget _smallActionButton({
     required IconData icon,
     required String label,
@@ -160,7 +158,6 @@ class CurrentDeliveryCard extends StatelessWidget {
     );
   }
 
-  // ✅ Primary button
   Widget _primaryButton({
     required String label,
     required Color color,
@@ -190,7 +187,6 @@ class CurrentDeliveryCard extends StatelessWidget {
     );
   }
 
-  // ❌ Outline button
   Widget _outlineButton({
     required String label,
     required Color color,

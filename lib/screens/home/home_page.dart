@@ -9,6 +9,7 @@ import '../../screens/home/widgets/stats_card.dart';
 import '../../models/delivery_model.dart';
 import 'widgets/upcoming_tile.dart';
 import '../auth/auth_controller.dart';
+import '../map/osm_navigation_screen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -62,8 +63,6 @@ class _HomePageState extends State<HomePage> {
     // Permission granted
     if (permission == LocationPermission.whileInUse ||
         permission == LocationPermission.always) {
-      // You can get location here if needed
-      // Position position = await Geolocator.getCurrentPosition();
       debugPrint("Location permission granted");
     }
   }
@@ -132,6 +131,19 @@ class _HomePageState extends State<HomePage> {
             child: const Text('Open Settings'),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _navigateToMess() async {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const OSMNavigationScreen(
+          destinationLat: 19.0760,
+          destinationLng: 72.8777,
+          destinationName: 'Shree Kitchen',
+        ),
       ),
     );
   }
@@ -384,7 +396,7 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: _navigateToMess,
             icon: const Icon(Icons.navigation),
             label: const Text('Navigate to Mess'),
             style: ElevatedButton.styleFrom(

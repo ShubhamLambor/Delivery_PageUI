@@ -50,8 +50,9 @@ class DeliveriesController extends ChangeNotifier {
       customerName: list[index].customerName,
       item: list[index].item,
       address: list[index].address,
+      latitude: list[index].latitude,
+      longitude: list[index].longitude,
       eta: list[index].eta,
-      pickupSlot: list[index].pickupSlot,
       status: newStatus,
     );
     notifyListeners();
