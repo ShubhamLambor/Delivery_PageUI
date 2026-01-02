@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "21623505552",
+    "project_id": "tiffinity-f0fcb",
+    "storage_bucket": "tiffinity-f0fcb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:21623505552:android:f1784fd5d1abf50d510e15",
+        "android_client_info": {
+          "package_name": "com.example.deliveryui"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD8nEKL7hmUxw7_dIsrXVIrJEjSg0Q3GjI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
