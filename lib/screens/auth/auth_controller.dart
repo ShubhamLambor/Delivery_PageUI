@@ -1,16 +1,11 @@
 // lib/screens/auth/auth_controller.dart
+
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_model.dart';
 import '../../data/repository/user_repository.dart';
 
 class AuthController extends ChangeNotifier {
-  AuthController() {
-    _loadCurrentUser();
-  }
-
-  final FirebaseAuth _auth = FirebaseAuth.instance;
   final UserRepository _userRepo = UserRepository();
 
   bool _loading = false;
@@ -21,24 +16,31 @@ class AuthController extends ChangeNotifier {
   String? get error => _error;
   UserModel? get user => _user;
 
-  Future<void> _loadCurrentUser() async {
-    final firebaseUser = _auth.currentUser;
-    if (firebaseUser != null && _user == null) {
+  AuthController() {
+    _loadUserFromPrefs();
+  }
+
+  /// RESTORE SESSION: Loads basic user info from storage when app starts
+  Future<void> _loadUserFromPrefs() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+
+    if (isLoggedIn) {
+      // Reconstruct basic user model from saved prefs to keep UI populated
+      // You might want to fetch the full profile from API here if needed
       _user = UserModel(
-        id: 0,
-        name: firebaseUser.displayName ??
-            firebaseUser.email ??
-            'Delivery Partner',
-        email: firebaseUser.email ?? '',
-        phone: '',
-        profilePic: firebaseUser.photoURL ?? '',
-        role: 'delivery_partner', // ✅ Fixed: singular, not plural
+        id: prefs.getInt('userId') ?? 0,
+        name: prefs.getString('userName') ?? 'Delivery Partner',
+        email: prefs.getString('userEmail') ?? '',
+        phone: prefs.getString('userPhone') ?? '',
+        profilePic: '', // Load if you saved it
+        role: 'delivery_partner',
       );
       notifyListeners();
     }
   }
 
-  /// LOGIN USING backend login.php
+  /// LOGIN: Authenticates with Backend API
   Future<bool> login(String email, String password) async {
     _loading = true;
     _error = null;
@@ -47,6 +49,19 @@ class AuthController extends ChangeNotifier {
     try {
       final user = await _userRepo.login(email: email, password: password);
       _user = user;
+
+      // SAVE SESSION: Store critical data so we don't ask for login again
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+
+      // Save basic details to restore session later
+      if (user != null) {
+        await prefs.setInt('userId', user.id);
+        await prefs.setString('userEmail', user.email);
+        await prefs.setString('userName', user.name);
+        await prefs.setString('userPhone', user.phone);
+      }
+
       _loading = false;
       _error = null;
       notifyListeners();
@@ -67,7 +82,7 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  /// ✅ UPDATED SIGNUP with all delivery partner fields
+  /// SIGNUP: Registers with Backend API
   Future<bool> signup({
     required String name,
     required String email,
@@ -105,7 +120,6 @@ class AuthController extends ChangeNotifier {
       return true;
     } catch (e) {
       _loading = false;
-      // Clean up error message
       String errorMsg = e.toString();
       if (errorMsg.startsWith('Exception:')) {
         errorMsg = errorMsg.replaceFirst('Exception:', '').trim();
@@ -119,15 +133,13 @@ class AuthController extends ChangeNotifier {
     }
   }
 
-  /// IMPROVED LOGOUT
+  /// LOGOUT: Clears Backend Session & Local Storage
   Future<void> logout() async {
-    await _auth.signOut();
     _user = null;
 
     // Clear stored preferences
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('isLoggedIn');
-    await prefs.remove('userEmail');
+    await prefs.clear(); // This removes 'isLoggedIn' and all user data
 
     notifyListeners();
   }

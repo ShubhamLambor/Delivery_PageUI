@@ -36,14 +36,10 @@ class ProfileController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    // If logout() in repo is void, remove 'await'.
-    // If it returns Future<void>, keep 'await'.
-    // Safe way: just call it.
     _repo.logout();
   }
 
   Future<void> updateName(String newName) async {
-    // FIX: Removed 'await' because repo method returns void
     _repo.updateUserName(newName);
 
     name = newName;
@@ -51,7 +47,6 @@ class ProfileController extends ChangeNotifier {
   }
 
   Future<void> updateProfilePic(String urlOrPath) async {
-    // FIX: Removed 'await' because repo method returns void
     _repo.updateProfilePic(urlOrPath);
 
     profilePic = urlOrPath;
@@ -86,7 +81,6 @@ class ProfileController extends ChangeNotifier {
 
     final String path = picked.path;
 
-    // This calls the method above (which no longer awaits the repo)
     await updateProfilePic(path);
   }
 }

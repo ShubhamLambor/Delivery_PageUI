@@ -2,10 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-
-import 'firebase_options.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // --- Controllers ---
 import 'package:deliveryui/screens/auth/auth_controller.dart';
@@ -27,12 +24,9 @@ import 'core/locale_provider.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-
-  final User? user = FirebaseAuth.instance.currentUser;
-  final bool isLoggedIn = user != null;
+  // 1. Check Shared Preferences for login status (Replaces Firebase check)
+  final prefs = await SharedPreferences.getInstance();
+  final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
 
   runApp(DeliveryBoyApp(isLoggedIn: isLoggedIn));
 }
@@ -68,12 +62,13 @@ class DeliveryBoyApp extends StatelessWidget {
               useMaterial3: true,
             ),
 
+            // Pass the checked status to Splash
             home: SplashScreen(isLoggedIn: isLoggedIn),
 
             routes: {
               '/home': (context) => const BottomNav(),
               '/login': (context) => const LoginPage(),
-              '/kyc': (context) => const KYCPage(), // NEW ROUTE ADDED
+              '/kyc': (context) => const KYCPage(),
             },
           );
         },

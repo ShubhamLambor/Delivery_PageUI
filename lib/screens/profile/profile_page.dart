@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 // --- Imports for your App Logic ---
 import '../auth/auth_controller.dart';
 import '../auth/login_page.dart';
-import '../kyc/kyc_popup_dialog.dart'; // Ensure correct import path
+import '../kyc/kyc_popup_dialog.dart';
 import 'profile_controller.dart';
 
 // --- Import the Detail Pages ---
@@ -17,12 +17,16 @@ class ProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 1. Get the AuthController (Source of Truth for User Data)
     final authController = Provider.of<AuthController>(context);
     final user = authController.user;
 
-    // 1. Check if vehicle number is missing
+    // 2. Check for KYC status using the correct user object
     final bool isKycPending = user != null &&
         (user.vehicleNumber == null || user.vehicleNumber!.isEmpty);
+
+    // 3. Get display name from Auth User (Fixes the "Shubham" issue)
+    final String displayName = user?.name ?? 'Delivery Partner';
 
     return Consumer<ProfileController>(
       builder: (context, controller, _) {
@@ -34,7 +38,7 @@ class ProfilePage extends StatelessWidget {
         }
 
         return Scaffold(
-          backgroundColor: const Color(0xFFF8F9FA), // Light grey background
+          backgroundColor: const Color(0xFFF8F9FA),
           body: SingleChildScrollView(
             child: Column(
               children: [
@@ -49,7 +53,7 @@ class ProfilePage extends StatelessWidget {
                       width: double.infinity,
                       decoration: const BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)], // Green Gradient
+                          colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
@@ -60,7 +64,7 @@ class ProfilePage extends StatelessWidget {
                       ),
                     ),
 
-                    // Header Content (Title & Info)
+                    // Header Content
                     Positioned(
                       top: 60,
                       child: Column(
@@ -79,7 +83,7 @@ class ProfilePage extends StatelessWidget {
                       ),
                     ),
 
-                    // Floating Profile Card (Photo + Name)
+                    // Floating Profile Card
                     Positioned(
                       top: 140,
                       left: 16,
@@ -99,11 +103,12 @@ class ProfilePage extends StatelessWidget {
                               children: [
                                 CircleAvatar(
                                   radius: 40,
-                                  backgroundImage: controller.profilePhotoUrl != null
-                                      ? NetworkImage(controller.profilePhotoUrl!)
-                                      : null,
+                                  // Prioritize Auth User photo, fallback to Controller, then null
+                                  backgroundImage: (user?.profilePic != null && user!.profilePic.isNotEmpty)
+                                      ? NetworkImage(user.profilePic)
+                                      : (controller.profilePhotoUrl != null ? NetworkImage(controller.profilePhotoUrl!) : null),
                                   backgroundColor: Colors.grey[200],
-                                  child: controller.profilePhotoUrl == null
+                                  child: (user?.profilePic == null || user!.profilePic.isEmpty) && controller.profilePhotoUrl == null
                                       ? const Icon(Icons.person, size: 40, color: Colors.grey)
                                       : null,
                                 ),
@@ -122,10 +127,13 @@ class ProfilePage extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 12),
+
+                            // --- FIXED: Display Name from AuthController ---
                             Text(
-                              controller.name,
+                              displayName,
                               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                             ),
+
                             const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -140,9 +148,13 @@ class ProfilePage extends StatelessWidget {
                               width: double.infinity,
                               child: OutlinedButton(
                                 onPressed: () async {
-                                  final newName = await _askName(context, controller.name);
+                                  // Pass current ACTUAL name to the edit dialog
+                                  final newName = await _askName(context, displayName);
                                   if (newName != null && newName.trim().isNotEmpty) {
+                                    // 1. Update in Backend
                                     await controller.updateName(newName.trim());
+                                    // 2. IMPORTANT: You might need to reload AuthController user here
+                                    // or update it manually so the UI reflects the change immediately.
                                   }
                                 },
                                 style: OutlinedButton.styleFrom(
@@ -159,7 +171,7 @@ class ProfilePage extends StatelessWidget {
                   ],
                 ),
 
-                const SizedBox(height: 120), // Spacer for the overlapping stack
+                const SizedBox(height: 120),
 
                 // --- 2. Main Menu Options ---
                 Padding(
@@ -167,7 +179,7 @@ class ProfilePage extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // KYC Alert (If Pending)
+                      // KYC Alert
                       if (isKycPending) ...[
                         Container(
                           margin: const EdgeInsets.only(bottom: 24),
@@ -258,7 +270,6 @@ class ProfilePage extends StatelessWidget {
   }
 
   // --- Helpers ---
-
   void _open(BuildContext context, Widget page) {
     Navigator.of(context).push(MaterialPageRoute(builder: (context) => page));
   }
