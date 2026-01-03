@@ -6,6 +6,7 @@ class UserModel {
   final String phone;
   final String profilePic;
   final String role;
+  final String? vehicleNumber;
 
   UserModel({
     required this.id,
@@ -14,6 +15,7 @@ class UserModel {
     required this.phone,
     required this.profilePic,
     this.role = 'delivery_partner', // ✅ Changed from 'customer' to 'delivery_partner'
+    this.vehicleNumber,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {

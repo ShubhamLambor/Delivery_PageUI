@@ -1,4 +1,5 @@
 // lib/data/repository/user_repository.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -8,21 +9,17 @@ import '../../models/user_model.dart';
 import 'dummy_data.dart';
 
 class UserRepository {
-  /// Base API URL
   static const String baseUrl = "https://svtechshant.com/tiffin/api";
-
-  /// Full URL to login endpoint
   final String loginUrl;
-
-  /// Full URL to register endpoint
   final String registerUrl;
+  final String kycUrl;
 
   UserRepository({
     this.loginUrl = "$baseUrl/login.php",
     this.registerUrl = "$baseUrl/register.php",
+    this.kycUrl = "$baseUrl/delivery_partners.php",
   });
 
-  // ✅ Add method to clear user data
   void clearUser() {
     print('🧹 Clearing old user data');
     DummyData.user = UserModel(
@@ -56,7 +53,7 @@ class UserRepository {
     DummyData.user = DummyData.user.copyWith(profilePic: newUrl);
   }
 
-  // ✅ ---------------- REAL LOGIN with NESTED DATA HANDLING ----------------
+  // ✅ ---------------- REAL LOGIN with ROBUST ID PARSING ----------------
   Future<UserModel> login({
     required String email,
     required String password,
@@ -67,14 +64,8 @@ class UserRepository {
     final uri = Uri.parse(loginUrl);
 
     print('════════════════════════════════════════');
-    print('🌐 LOGIN API REQUEST');
-    print('📍 URL: $uri');
+    print('🌐 LOGIN API REQUEST: $uri');
     print('📧 Email: $email');
-    print('🔒 Password: $password');
-    print('🔒 Password length: ${password.length}');
-    print('🔒 Password bytes: ${password.codeUnits}');
-    print('📤 Body: {email: $email, password: $password}');
-    print('════════════════════════════════════════');
 
     try {
       final response = await http.post(
@@ -94,11 +85,8 @@ class UserRepository {
         },
       );
 
-      print('════════════════════════════════════════');
-      print('📥 LOGIN RESPONSE');
-      print('📊 Status: ${response.statusCode}');
+      print('📥 LOGIN RESPONSE: ${response.statusCode}');
       print('📦 Body: ${response.body}');
-      print('════════════════════════════════════════');
 
       if (response.statusCode != 200) {
         print('❌ Login failed with status: ${response.statusCode}');
@@ -113,42 +101,39 @@ class UserRepository {
       }
 
       final data = jsonDecode(response.body);
-      print('📋 Raw parsed data: $data');
-
-      // ✅ FIX: Handle nested "data" structure from backend
       Map<String, dynamic> actualData = data;
 
       // Check if response has nested "data" field
       if (data.containsKey('data') && data['data'] is Map) {
         actualData = data['data'] as Map<String, dynamic>;
-        print('📋 Using nested data structure: $actualData');
+        print('📋 Using nested data structure');
       }
 
-      // ✅ Check success and token in the actual data
       if (actualData['success'] == false) {
         final msg = actualData['message']?.toString() ?? 'Login failed';
-        print('❌ Login validation failed: $msg');
         throw Exception(msg);
       }
 
-      if (actualData['token'] == null || actualData['token'].toString().isEmpty) {
-        print('❌ No token received from server');
-        throw Exception('Invalid response from server');
-      }
-
       final userData = actualData['user'];
-
       if (userData == null) {
-        print('❌ No user data received from server');
-        throw Exception('Invalid response from server');
+        throw Exception('Invalid response: No user data');
       }
 
-      print('👤 User data: $userData');
+      print('👤 Raw User Data: $userData');
 
-      // ✅ Parse user ID
-      final int userId = userData['uid'] is int
-          ? userData['uid'] as int
-          : int.tryParse(userData['uid'].toString()) ?? 0;
+      // ✅ ROBUST ID PARSING LOGIC
+      // Checks 'uid', 'id', and 'user_id' to find a valid ID
+      int userId = 0;
+      if (userData['uid'] != null) {
+        userId = int.tryParse(userData['uid'].toString()) ?? 0;
+      } else if (userData['id'] != null) {
+        userId = int.tryParse(userData['id'].toString()) ?? 0;
+      } else if (userData['user_id'] != null) {
+        userId = int.tryParse(userData['user_id'].toString()) ?? 0;
+      }
+
+      print('🆔 Parsed User ID: $userId');
+      if (userId == 0) print('⚠️ WARNING: User ID is 0. KYC updates will fail.');
 
       // ✅ Create user model with fresh data
       final user = UserModel(
@@ -158,9 +143,9 @@ class UserRepository {
         phone: userData['phone']?.toString() ?? '',
         profilePic: userData['profile_pic']?.toString() ?? '',
         role: userData['role']?.toString() ?? 'delivery',
+        // Optional: Parse vehicle number if available in login response
+        // vehicleNumber: userData['vehicle_number']?.toString(),
       );
-
-      print('✅ Login successful! User: ${user.name} (${user.email})');
 
       // ✅ Store the NEW user data
       DummyData.user = user;
@@ -177,14 +162,12 @@ class UserRepository {
       throw Exception('Invalid response from server');
     } catch (e) {
       print('❌ Login Error: $e');
-      if (e.toString().contains('Exception:')) {
-        rethrow;
-      }
+      if (e.toString().contains('Exception:')) rethrow;
       throw Exception('Login failed: ${e.toString()}');
     }
   }
 
-  // ✅ ---------------- BASIC SIGNUP with ENHANCED DEBUGGING ----------------
+  // ✅ ---------------- BASIC SIGNUP (Unchanged) ----------------
   Future<void> signupBasic({
     required String name,
     required String email,
@@ -192,99 +175,38 @@ class UserRepository {
     required String phone,
     required String role,
   }) async {
-    // ✅ Clear old user data before signup
     clearUser();
-
     final uri = Uri.parse(registerUrl);
-
     final Map<String, String> body = {
-      'name': name,
-      'email': email,
-      'password': password,
-      'phone': phone,
-      'role': role,
+      'name': name, 'email': email, 'password': password, 'phone': phone, 'role': role,
     };
 
-    print('════════════════════════════════════════');
-    print('🌐 SIGNUP API REQUEST');
-    print('📍 URL: $uri');
-    print('📤 Body: $body');
-    print('🔒 Password: $password');
-    print('🔒 Password length: ${password.length}');
-    print('🔒 Password bytes: ${password.codeUnits}');
-    print('════════════════════════════════════════');
-
+    print('🌐 SIGNUP API REQUEST: $uri');
     try {
       final response = await http.post(
         uri,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
         body: body,
-        encoding: Encoding.getByName('utf-8'),
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          throw Exception('Connection timeout. Please try again.');
-        },
-      );
+      ).timeout(const Duration(seconds: 30));
 
-      print('════════════════════════════════════════');
-      print('📥 SIGNUP RESPONSE');
-      print('📊 Status: ${response.statusCode}');
-      print('📦 Body: ${response.body}');
-      print('════════════════════════════════════════');
-
-      if (response.statusCode == 404) {
-        throw Exception('API endpoint not found. Check register.php file.');
-      }
+      print('📥 SIGNUP RESPONSE: ${response.statusCode}');
 
       if (response.statusCode != 200 && response.statusCode != 201) {
-        try {
-          final data = jsonDecode(response.body);
-          final errorMsg = data['error']?.toString() ??
-              data['message']?.toString() ??
-              'Server error ${response.statusCode}';
-          throw Exception(errorMsg);
-        } catch (e) {
-          if (e.toString().contains('Exception:')) rethrow;
-          throw Exception('Server returned ${response.statusCode}: ${response.body}');
-        }
+        throw Exception('Server error ${response.statusCode}');
       }
 
       final data = jsonDecode(response.body);
-      if (data.containsKey('success') && data['success'] != true) {
-        final errorMsg = data['error']?.toString() ??
-            data['message']?.toString() ??
-            'Registration failed';
-        throw Exception(errorMsg);
-      }
+      if (data['success'] != true) throw Exception(data['message'] ?? 'Registration failed');
 
       print('✅ Registration successful!');
 
-    } on SocketException catch (e) {
-      print('❌ SocketException: $e');
-      throw Exception('No internet connection. Please check your network.');
-    } on TlsException catch (e) {
-      print('❌ TlsException: $e');
-      throw Exception('SSL certificate error. Contact support.');
-    } on TimeoutException catch (e) {
-      print('❌ TimeoutException: $e');
-      throw Exception('Connection timeout. Please try again.');
-    } on http.ClientException catch (e) {
-      print('❌ ClientException: $e');
-      throw Exception('Connection failed: ${e.message}');
-    } on FormatException catch (e) {
-      print('❌ FormatException: $e');
-      throw Exception('Invalid server response format');
     } catch (e) {
-      print('❌ Unknown Error: $e');
-      if (e.toString().contains('Exception:')) rethrow;
-      throw Exception('Registration failed: $e');
+      print('❌ Signup Error: $e');
+      rethrow;
     }
   }
 
-  // ---------------- FULL DELIVERY PARTNER SIGNUP (for future use) ----------------
+  // ---------------- FULL DELIVERY PARTNER SIGNUP (Legacy) ----------------
   Future<void> signup({
     required String username,
     required String email,
@@ -298,17 +220,47 @@ class UserRepository {
     required String bankAccountNumber,
     required String ifscCode,
   }) async {
-    // ✅ Clear old user data
+    // Legacy full signup code (kept for reference, uses registerUrl)
     clearUser();
-
     final uri = Uri.parse(registerUrl);
+    final Map<String, String> body = {
+      'name': username, 'email': email, 'password': password, 'phone': phone,
+      'role': 'delivery_partner', 'vehicle_type': vehicleType,
+      'vehicle_number': vehicleNumber, 'driving_license': drivingLicense,
+      'aadhar_number': aadharNumber, 'pan_number': panNumber,
+      'bank_account_number': bankAccountNumber, 'ifsc_code': ifscCode,
+    };
+
+    try {
+      final response = await http.post(uri, body: body);
+      if (response.statusCode != 200) throw Exception('Failed');
+    } catch (e) { rethrow; }
+  }
+
+
+  // ✅ ---------------- NEW: SUBMIT KYC (Called from Home/Profile) ----------------
+  Future<void> submitDeliveryPartnerKyc({
+    required int userId,
+    required String vehicleType,
+    required String vehicleNumber,
+    required String drivingLicense,
+    required String aadharNumber,
+    required String panNumber,
+    required String bankAccountNumber,
+    required String ifscCode,
+  }) async {
+    final uri = Uri.parse(kycUrl); // delivery_partners.php
+
+    print('════════════════════════════════════════');
+    print('🌐 SUBMITTING KYC DATA to $uri');
+
+    if (userId == 0) {
+      print('❌ ERROR: User ID is 0. Aborting request.');
+      throw Exception('Invalid User ID. Please re-login.');
+    }
 
     final Map<String, String> body = {
-      'name': username,
-      'email': email,
-      'password': password,
-      'phone': phone,
-      'role': 'delivery_partner',
+      'user_id': userId.toString(),
       'vehicle_type': vehicleType,
       'vehicle_number': vehicleNumber,
       'driving_license': drivingLicense,
@@ -318,11 +270,7 @@ class UserRepository {
       'ifsc_code': ifscCode,
     };
 
-    print('════════════════════════════════════════');
-    print('🌐 FULL DELIVERY PARTNER SIGNUP API REQUEST');
-    print('📍 URL: $uri');
     print('📤 Body: $body');
-    print('════════════════════════════════════════');
 
     try {
       final response = await http.post(
@@ -331,66 +279,25 @@ class UserRepository {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: body,
-        encoding: Encoding.getByName('utf-8'),
-      ).timeout(
-        const Duration(seconds: 30),
-        onTimeout: () {
-          throw Exception('Request timed out after 30 seconds');
-        },
-      );
+      ).timeout(const Duration(seconds: 30));
 
-      print('════════════════════════════════════════');
-      print('📥 RESPONSE');
-      print('📊 Status: ${response.statusCode}');
+      print('📥 KYC RESPONSE: ${response.statusCode}');
       print('📦 Body: ${response.body}');
-      print('════════════════════════════════════════');
-
-      if (response.statusCode == 404) {
-        throw Exception('API endpoint not found. Check if file is named register.php or signup.php');
-      }
 
       if (response.statusCode != 200 && response.statusCode != 201) {
-        try {
-          final data = jsonDecode(response.body);
-          final errorMsg = data['error']?.toString() ??
-              data['message']?.toString() ??
-              'Server error ${response.statusCode}';
-          throw Exception(errorMsg);
-        } catch (e) {
-          if (e.toString().contains('Exception:')) rethrow;
-          throw Exception('Server returned ${response.statusCode}: ${response.body}');
-        }
+        throw Exception('Server error ${response.statusCode}');
       }
 
       final data = jsonDecode(response.body);
-      if (data.containsKey('success') && data['success'] != true) {
-        final errorMsg = data['error']?.toString() ??
-            data['message']?.toString() ??
-            'Registration failed';
-        throw Exception(errorMsg);
+      if (data is Map && data.containsKey('success') && data['success'] == false) {
+        throw Exception(data['message'] ?? 'KYC update failed');
       }
 
-      print('✅ Registration successful!');
+      print('✅ KYC Submitted Successfully!');
 
-    } on SocketException catch (e) {
-      print('❌ SocketException: $e');
-      throw Exception('No internet connection. Please check your network.');
-    } on TlsException catch (e) {
-      print('❌ TlsException: $e');
-      throw Exception('SSL certificate error. Contact support.');
-    } on TimeoutException catch (e) {
-      print('❌ TimeoutException: $e');
-      throw Exception('Connection timeout. Please try again.');
-    } on http.ClientException catch (e) {
-      print('❌ ClientException: $e');
-      throw Exception('Connection failed: ${e.message}');
-    } on FormatException catch (e) {
-      print('❌ FormatException: $e');
-      throw Exception('Invalid server response format');
     } catch (e) {
-      print('❌ Unknown Error: $e');
-      if (e.toString().contains('Exception:')) rethrow;
-      throw Exception('Registration failed: $e');
+      print('❌ KYC Error: $e');
+      rethrow;
     }
   }
 }

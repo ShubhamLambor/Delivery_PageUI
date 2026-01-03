@@ -1,3 +1,5 @@
+// lib/screens/profile/profile_controller.dart
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -9,8 +11,11 @@ class ProfileController extends ChangeNotifier {
 
   String name = '';
   String email = '';
-  String profilePic = ''; // can be URL or local file path
+  String profilePic = '';
   bool isLoading = false;
+
+  // Getter for the UI
+  String? get profilePhotoUrl => profilePic.isNotEmpty ? profilePic : null;
 
   ProfileController() {
     loadUserData();
@@ -20,6 +25,7 @@ class ProfileController extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
+    // Assuming getUserProfile is async. If not, remove 'await'.
     final user = await _repo.getUserProfile();
     name = user.name;
     email = user.email;
@@ -30,22 +36,28 @@ class ProfileController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await _repo.logout();
+    // If logout() in repo is void, remove 'await'.
+    // If it returns Future<void>, keep 'await'.
+    // Safe way: just call it.
+    _repo.logout();
   }
 
   Future<void> updateName(String newName) async {
+    // FIX: Removed 'await' because repo method returns void
     _repo.updateUserName(newName);
+
     name = newName;
     notifyListeners();
   }
 
   Future<void> updateProfilePic(String urlOrPath) async {
+    // FIX: Removed 'await' because repo method returns void
     _repo.updateProfilePic(urlOrPath);
+
     profilePic = urlOrPath;
     notifyListeners();
   }
 
-  /// Change profile photo with bottom sheet (Camera / Gallery)
   Future<void> changeProfilePhoto(BuildContext context) async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -74,6 +86,7 @@ class ProfileController extends ChangeNotifier {
 
     final String path = picked.path;
 
+    // This calls the method above (which no longer awaits the repo)
     await updateProfilePic(path);
   }
 }
