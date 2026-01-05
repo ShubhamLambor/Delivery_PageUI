@@ -11,6 +11,7 @@ import '../../models/delivery_model.dart';
 import 'widgets/upcoming_tile.dart';
 import '../auth/auth_controller.dart';
 import '../map/osm_navigation_screen.dart';
+import '../chatbot/chatbot_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,7 +21,6 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // ... (Permission code remains same) ...
   @override
   void initState() {
     super.initState();
@@ -78,7 +78,7 @@ class _HomePageState extends State<HomePage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- 1. Header Area ---
+            // --- 1. Header Area with Chat Button ---
             AnimatedContainer(
               duration: const Duration(milliseconds: 500),
               curve: Curves.easeInOut,
@@ -112,14 +112,37 @@ class _HomePageState extends State<HomePage> {
                           Text(dateStr, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14)),
                         ],
                       ),
-                      Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                        child: CircleAvatar(
-                          radius: 20,
-                          backgroundColor: Colors.white,
-                          child: Icon(Icons.person, color: isOnline ? Colors.green : Colors.red),
-                        ),
+                      Row(
+                        children: [
+                          // 👇 CHAT BUTTON (NEW)
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.support_agent, color: Colors.white, size: 26),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const ChatbotPage()),
+                                );
+                              },
+                              tooltip: 'Support Assistant',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Profile Icon
+                          Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            child: CircleAvatar(
+                              radius: 20,
+                              backgroundColor: Colors.white,
+                              child: Icon(Icons.person, color: isOnline ? Colors.green : Colors.red),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -129,9 +152,9 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // --- 2. Floating Stats Grid (Shifted UP over header) ---
+            // --- 2. Floating Stats Grid ---
             Transform.translate(
-              offset: const Offset(0, -60), // Pulls grid UP
+              offset: const Offset(0, -60),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: GridView.count(
@@ -151,8 +174,7 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // --- 3. Main Content Area (Shifted UP to close gap) ---
-            // We shift this UP by a larger amount (-80) to cover the empty space left by the grid moving up.
+            // --- 3. Main Content Area ---
             Transform.translate(
               offset: const Offset(0, -80),
               child: Padding(
@@ -190,7 +212,6 @@ class _HomePageState extends State<HomePage> {
                     else
                       Column(children: upcoming.map((d) => UpcomingTile(delivery: d)).toList()),
 
-                    // Add extra bottom padding because Transform might cut off the bottom
                     const SizedBox(height: 100),
                   ],
                 ),
@@ -202,7 +223,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // --- Helpers (Same) ---
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -287,7 +307,7 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// --- DYNAMIC SLIDE-TO-UNLOCK BUTTON (Same) ---
+// --- SwipeToggleButton (unchanged) ---
 class SwipeToggleButton extends StatefulWidget {
   final bool isOnline;
   final VoidCallback onToggle;
