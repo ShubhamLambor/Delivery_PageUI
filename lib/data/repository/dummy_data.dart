@@ -1,5 +1,4 @@
-
-
+// lib/data/repository/dummy_data.dart
 import '../../models/delivery_model.dart';
 import '../../models/earning_model.dart';
 import '../../models/user_model.dart';
@@ -11,8 +10,9 @@ class DummyData {
       customerName: 'Amit Sharma',
       item: 'Lunch Box',
       address: 'Room 304, Hostel-B, IIT Mumbai',
+      latitude: 19.1334,
+      longitude: 72.9133,
       eta: '12 mins',
-      pickupSlot: '10:15 - 10:45 AM',
       status: 'Pending',
     ),
     DeliveryModel(
@@ -20,8 +20,9 @@ class DummyData {
       customerName: 'Priya Patel',
       item: 'Lunch Box',
       address: 'Room 205, Hostel-A, Near Library',
+      latitude: 19.1340,
+      longitude: 72.9140,
       eta: '20 mins',
-      pickupSlot: '10:15 - 10:45 AM',
       status: 'Pending',
     ),
     DeliveryModel(
@@ -29,8 +30,9 @@ class DummyData {
       customerName: 'Rahul Verma',
       item: 'Dinner Box',
       address: 'Room 101, PG House',
+      latitude: 19.1320,
+      longitude: 72.9120,
       eta: '25 mins',
-      pickupSlot: 'N/A',
       status: 'Pending',
     ),
     DeliveryModel(
@@ -38,8 +40,9 @@ class DummyData {
       customerName: 'Sneha Desai',
       item: 'Lunch Box',
       address: 'Flat 302, Silver Apartments',
+      latitude: 19.1350,
+      longitude: 72.9150,
       eta: 'Delivered',
-      pickupSlot: 'N/A',
       status: 'Completed',
     ),
   ];
@@ -63,11 +66,10 @@ class DummyData {
   ];
 
   static UserModel user = UserModel(
-    id: 1,
+    id: '',  // ✅ Empty string instead of 0
     name: "Shubham Delivery",
     email: "delivery@example.com",
     phone: "9876543210",
-    profilePic:
-    "https://cdn-icons-png.flaticon.com/512/3177/3177440.png",
+    profilePic: "https://cdn-icons-png.flaticon.com/512/3177/3177440.png",
   );
 }

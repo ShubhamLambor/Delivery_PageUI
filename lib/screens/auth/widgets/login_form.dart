@@ -1,3 +1,5 @@
+// lib/screens/auth/widgets/login_form.dart
+
 import 'package:flutter/material.dart';
 
 class LoginForm extends StatefulWidget {
@@ -44,115 +46,126 @@ class _LoginFormState extends State<LoginForm> {
 
   @override
   Widget build(BuildContext context) {
+    // IMPORTANT: The LoginForm is now just the Card content + Header integration
+    // It assumes it's being placed inside a Scaffold by the parent page or renders its own structure.
+    // Based on your request, I will make this widget render the FULL SCREEN layout to ensure the design matches.
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: const Color(0xFFF8F9FA),
       body: SingleChildScrollView(
         child: Stack(
           children: [
-            // 🔰 GREEN HEADER
+            // 1. TOP GREEN HEADER (Curved)
             Container(
-              height: 300,
+              height: 320,
               width: double.infinity,
               decoration: const BoxDecoration(
-                color: Color(0xFF2FA84F),
+                gradient: LinearGradient(
+                  colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)], // Rich Green Gradient
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(40),
-                  bottomRight: Radius.circular(40),
+                  bottomLeft: Radius.circular(50),
+                  bottomRight: Radius.circular(50),
                 ),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  CircleAvatar(
-                    radius: 36,
-                    backgroundColor: Colors.white,
-                    child: Icon(
-                      Icons.inventory_2_outlined,
-                      color: Color(0xFF2FA84F),
-                      size: 40,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.electric_bike_rounded,
+                      color: Colors.white,
+                      size: 48,
                     ),
                   ),
-                  SizedBox(height: 12),
-                  Text(
+                  const SizedBox(height: 16),
+                  const Text(
                     'Tiffinity',
                     style: TextStyle(
-                      fontSize: 26,
+                      fontSize: 32,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
+                      letterSpacing: 1.0,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     'Delivery Partner Portal',
-                    style: TextStyle(color: Colors.white70),
+                    style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 16),
                   ),
+                  const SizedBox(height: 50), // Spacing for overlap
                 ],
               ),
             ),
 
-            // 📦 LOGIN CARD (OVERLAPPED)
+            // 2. LOGIN CARD (Floating)
             Padding(
-              padding: const EdgeInsets.only(
-                top: 240, // 👈 overlap amount
-                left: 20,
-                right: 20,
-              ),
+              padding: const EdgeInsets.only(top: 260, left: 20, right: 20),
               child: Column(
                 children: [
-                  Card(
-                    elevation: 8,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(40), // SAME radius
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            'Email ID',
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                            'Login Account',
+                            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32)),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 24),
+
+                          // Email Field
                           TextField(
                             controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
                             decoration: InputDecoration(
-                              hintText: 'Enter your email',
-                              prefixIcon:
-                              const Icon(Icons.email_outlined),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              labelText: 'Email Address',
+                              hintText: 'partner@tiffinity.com',
+                              prefixIcon: const Icon(Icons.email_outlined, color: Colors.green),
+                              filled: true,
+                              fillColor: Colors.grey[50],
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.green, width: 2)),
                             ),
                           ),
+                          const SizedBox(height: 20),
 
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Password',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 8),
+                          // Password Field
                           TextField(
                             controller: _passwordController,
                             obscureText: _obscure,
                             decoration: InputDecoration(
-                              hintText: 'Enter your password',
-                              prefixIcon:
-                              const Icon(Icons.lock_outline),
+                              labelText: 'Password',
+                              prefixIcon: const Icon(Icons.lock_outline, color: Colors.green),
                               suffixIcon: IconButton(
-                                icon: Icon(
-                                  _obscure
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
-                                ),
-                                onPressed: () {
-                                  setState(() => _obscure = !_obscure);
-                                },
+                                icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
+                                onPressed: () => setState(() => _obscure = !_obscure),
                               ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
+                              filled: true,
+                              fillColor: Colors.grey[50],
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.green, width: 2)),
                             ),
                           ),
 
@@ -160,54 +173,44 @@ class _LoginFormState extends State<LoginForm> {
                             alignment: Alignment.centerRight,
                             child: TextButton(
                               onPressed: () {},
-                              child: const Text(
-                                'Forgot Password?',
-                                style: TextStyle(
-                                    color: Color(0xFF2FA84F)),
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 48,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor:
-                                const Color(0xFF2FA84F),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                  BorderRadius.circular(14),
-                                ),
-                              ),
-                              onPressed: widget.loading
-                                  ? null
-                                  : _handleSubmit,
-                              child: Text(
-                                widget.loading
-                                    ? 'Logging in...'
-                                    : 'Login',
-                                style:
-                                const TextStyle(fontSize: 16),
-                              ),
+                              child: Text('Forgot Password?', style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.w600)),
                             ),
                           ),
 
                           const SizedBox(height: 20),
+
+                          // Login Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 54,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2E7D32),
+                                foregroundColor: Colors.white,
+                                elevation: 4,
+                                shadowColor: Colors.green.withOpacity(0.4),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                              onPressed: widget.loading ? null : _handleSubmit,
+                              child: widget.loading
+                                  ? const CircularProgressIndicator(color: Colors.white)
+                                  : const Text('LOGIN', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                            ),
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // Register Link
                           Center(
                             child: Column(
                               children: [
-                                const Text('New to Tiffinity?'),
-                                const SizedBox(height: 6),
+                                Text("Don't have an account?", style: TextStyle(color: Colors.grey[600])),
+                                const SizedBox(height: 8),
                                 GestureDetector(
                                   onTap: widget.onTapRegister,
                                   child: const Text(
-                                    'Register as a Delivery Partner',
-                                    style: TextStyle(
-                                      color: Colors.orange,
-                                      fontWeight: FontWeight.w600,
-                                    ),
+                                    'Apply as Delivery Partner',
+                                    style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold, fontSize: 16),
                                   ),
                                 ),
                               ],
@@ -218,26 +221,17 @@ class _LoginFormState extends State<LoginForm> {
                     ),
                   ),
 
-                  const SizedBox(height: 20),
-                  const Text(
-                    'Need help logging in?',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 6),
+                  // Footer Links
+                  const SizedBox(height: 40),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: const [
-                      Text(
-                        'Contact Support',
-                        style:
-                        TextStyle(color: Color(0xFF2FA84F)),
+                    children: [
+                      Text('Help Center', style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.w600)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text('|', style: TextStyle(color: Colors.grey[400])),
                       ),
-                      Text('  |  '),
-                      Text(
-                        'FAQ',
-                        style:
-                        TextStyle(color: Color(0xFF2FA84F)),
-                      ),
+                      Text('Terms of Service', style: TextStyle(color: Colors.green[700], fontWeight: FontWeight.w600)),
                     ],
                   ),
                   const SizedBox(height: 30),

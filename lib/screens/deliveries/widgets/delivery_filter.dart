@@ -40,7 +40,7 @@ class DeliveryTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -66,7 +66,7 @@ class DeliveryTile extends StatelessWidget {
               child: Icon(_statusIcon(delivery.status), color: color, size: 28),
             ),
 
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
 
             // Delivery info
             Expanded(
@@ -76,26 +76,61 @@ class DeliveryTile extends StatelessWidget {
                   Text(
                     delivery.customerName,
                     style: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.bold,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 4),
-                  Text("📦 ${delivery.item}"),
-                  Text("📍 ${delivery.address}"),
+                  Text(
+                    "📦 ${delivery.item}",
+                    style: const TextStyle(fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    "📍 ${delivery.address}",
+                    style: const TextStyle(fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 4),
-                  Text("ETA: ${delivery.eta}",
-                      style: TextStyle(color: Colors.grey[700])),
+                  Text(
+                    "ETA: ${delivery.eta}",
+                    style: TextStyle(
+                      color: Colors.grey[700],
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ],
               ),
             ),
 
+            const SizedBox(width: 8),
+
             // Status text
-            Text(
-              delivery.status,
-              style: TextStyle(
-                color: color,
-                fontWeight: FontWeight.bold,
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                delivery.status,
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.clip,
               ),
             ),
           ],

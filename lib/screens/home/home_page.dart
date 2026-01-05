@@ -1,339 +1,340 @@
+// lib/screens/home/home_page.dart
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import 'home_controller.dart';
 import '../../screens/home/widgets/current_delivery_card.dart';
-import '../../screens/home/widgets/stats_card.dart';
 import '../../models/delivery_model.dart';
 import 'widgets/upcoming_tile.dart';
 import '../auth/auth_controller.dart';
+import '../map/osm_navigation_screen.dart';
+import '../chatbot/chatbot_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestLocationPermission();
+    });
+  }
+
+  Future<void> _requestLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) { if (mounted) _showLocationServiceDialog(); return; }
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) { if (mounted) _showPermissionDeniedDialog(); return; }
+    }
+    if (permission == LocationPermission.deniedForever) { if (mounted) _showPermissionPermanentlyDeniedDialog(); return; }
+  }
+
+  void _showLocationServiceDialog() {
+    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Location Services Disabled'), content: const Text('Please enable location services.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))]));
+  }
+
+  void _showPermissionDeniedDialog() {
+    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Permission Required'), content: const Text('App needs location access.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () {Navigator.pop(context); _requestLocationPermission();}, child: const Text('Retry'))]));
+  }
+
+  void _showPermissionPermanentlyDeniedDialog() {
+    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Permission Denied'), content: const Text('Enable location in settings.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () {Geolocator.openAppSettings(); Navigator.pop(context);}, child: const Text('Settings'))]));
+  }
+
+  Future<void> _navigateToMess() async {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => const OSMNavigationScreen(destinationLat: 19.0760, destinationLng: 72.8777, destinationName: 'Shree Kitchen')));
+  }
 
   @override
   Widget build(BuildContext context) {
     final home = context.watch<HomeController>();
-    final auth = context.watch<AuthController>(); // Firebase user
+    final auth = context.watch<AuthController>();
 
     final DeliveryModel? current = home.currentDelivery;
     final List<DeliveryModel> upcoming = home.upcomingDeliveries;
 
-    final total = home.totalCount;
     final completed = home.completedCount;
     final pending = home.pendingCount;
     final cancelled = home.cancelledCount;
-    final isOnline = home.isOnline;
 
+    final isOnline = home.isOnline;
     final userName = auth.user?.name ?? 'Delivery Partner';
+    final now = DateTime.now();
+    final dateStr = DateFormat('EEE, d MMM').format(now);
 
     return Scaffold(
-      backgroundColor: Colors.grey[50],
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Delivery Boy',
-          style: TextStyle(color: Colors.black),
-        ),
-        actions: [
-          IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.notifications, color: Colors.black),
-          ),
-          TextButton(
-            onPressed: () {},
-            child: const Text('Share'),
-          ),
-        ],
-      ),
+      backgroundColor: const Color(0xFFF8F9FA),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Profile Row
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            // --- 1. Header Area with Chat Button ---
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeInOut,
+              height: 240,
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  colors: isOnline
+                      ? [const Color(0xFF2E7D32), const Color(0xFF4CAF50)]
+                      : [const Color(0xFFC62828), const Color(0xFFEF5350)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(30),
+                  bottomRight: Radius.circular(30),
+                ),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.lightBlueAccent,
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        userName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Hello, $userName', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 4),
+                          Text(dateStr, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14)),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Today',
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontSize: 12,
-                        ),
+                      Row(
+                        children: [
+                          // 👇 CHAT BUTTON (NEW)
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: const Icon(Icons.support_agent, color: Colors.white, size: 26),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const ChatbotPage()),
+                                );
+                              },
+                              tooltip: 'Support Assistant',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Profile Icon
+                          Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            child: CircleAvatar(
+                              radius: 20,
+                              backgroundColor: Colors.white,
+                              child: Icon(Icons.person, color: isOnline ? Colors.green : Colors.red),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: home.toggleOnline,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: isOnline
-                            ? Colors.green.shade600
-                            : Colors.red.shade600,
-                        borderRadius: BorderRadius.circular(25),
-                        boxShadow: [
-                          BoxShadow(
-                            color: (isOnline ? Colors.green : Colors.red)
-                                .withOpacity(0.4),
-                            blurRadius: 6,
-                            offset: const Offset(0, 3),
-                          )
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            isOnline ? Icons.flash_on : Icons.flash_off,
-                            size: 16,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            isOnline ? 'Online' : 'Offline',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 300),
-                            child: Icon(
-                              isOnline
-                                  ? Icons.check_circle
-                                  : Icons.pause_circle_filled,
-                              key: ValueKey(isOnline),
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                  const SizedBox(height: 20),
+                  SwipeToggleButton(isOnline: isOnline, onToggle: home.toggleOnline),
                 ],
               ),
             ),
 
-            const SizedBox(height: 16),
-
-            // Stats Grid
-            GridView.count(
-              shrinkWrap: true,
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 1.8,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                StatsCard(
-                  title: 'Total Deliveries Today',
-                  value: '$total',
-                  icon: Icons.local_shipping,
-                  color: Colors.blue,
+            // --- 2. Floating Stats Grid ---
+            Transform.translate(
+              offset: const Offset(0, -60),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GridView.count(
+                  shrinkWrap: true,
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 1.6,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [
+                    _buildStatCard('Today\'s Earnings', '₹320', Icons.currency_rupee, Colors.orange),
+                    _buildStatCard('Completed', '$completed', Icons.check_circle, Colors.green),
+                    _buildStatCard('Pending', '$pending', Icons.access_time, Colors.blue),
+                    _buildStatCard('Cancelled', '$cancelled', Icons.cancel, Colors.red),
+                  ],
                 ),
-                StatsCard(
-                  title: 'Completed',
-                  value: '$completed',
-                  icon: Icons.check_circle,
-                  color: Colors.green,
-                ),
-                StatsCard(
-                  title: 'Pending',
-                  value: '$pending',
-                  icon: Icons.access_time,
-                  color: Colors.orange,
-                ),
-                const StatsCard(
-                  title: 'Today\'s Earnings',
-                  value: '₹320',
-                  icon: Icons.currency_rupee,
-                  color: Colors.purple,
-                ),
-                StatsCard(
-                  title: 'Order Completed',
-                  value: '$completed',
-                  icon: Icons.done_all,
-                  color: Colors.teal,
-                ),
-                StatsCard(
-                  title: 'Order Cancelled',
-                  value: '$cancelled',
-                  icon: Icons.cancel,
-                  color: Colors.red,
-                ),
-              ],
+              ),
             ),
 
-            const SizedBox(height: 16),
+            // --- 3. Main Content Area ---
+            Transform.translate(
+              offset: const Offset(0, -80),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (current != null) ...[
+                      const Text('Active Delivery', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
+                      CurrentDeliveryCard(delivery: current),
+                      const SizedBox(height: 24),
+                    ],
 
-            // Current Delivery
-            if (current != null) ...[
-              CurrentDeliveryCard(delivery: current),
-              const SizedBox(height: 16),
-            ],
+                    const Text('Next Pickup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    _buildPickupCard(),
 
-            // Pickup Section
-            _buildPickupSection(),
+                    const SizedBox(height: 24),
 
-            const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Upcoming Orders', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                          child: Text('${upcoming.length}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (upcoming.isEmpty)
+                      Center(child: Padding(padding: const EdgeInsets.all(20), child: Text("No upcoming orders", style: TextStyle(color: Colors.grey[500]))))
+                    else
+                      Column(children: upcoming.map((d) => UpcomingTile(delivery: d)).toList()),
 
-            // Upcoming Deliveries Section
-            _buildUpcomingSection(upcoming),
+                    const SizedBox(height: 100),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  // ---- PICKUP SECTION ----
-  Widget _buildPickupSection() {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 30),
-            blurRadius: 8,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 18)),
+              const Spacer(),
+              Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            ],
           ),
+          const SizedBox(height: 8),
+          Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPickupCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.shade100),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            children: const [
-              Icon(Icons.store, color: Colors.orange),
-              SizedBox(width: 8),
-              Text(
-                'Pickup Point',
-                style: TextStyle(fontWeight: FontWeight.bold),
+            children: [
+              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.store, color: Colors.orange, size: 20)),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Shree Kitchen', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    Text('Pickup Point', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
               ),
+              Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(8)), child: const Text('25 Tiffins', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
             ],
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Shree Kitchen',
-            style: TextStyle(fontWeight: FontWeight.bold),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
+              const SizedBox(width: 6),
+              const Text('10:15 - 10:45 AM', style: TextStyle(fontWeight: FontWeight.w500)),
+            ],
           ),
-          const SizedBox(height: 4),
-          const Text(
-            '25 Tiffins Ready',
-            style: TextStyle(
-              color: Colors.grey,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              children: const [
-                Icon(Icons.access_time, color: Colors.orange, size: 14),
-                SizedBox(width: 6),
-                Text(
-                  'Pickup: 10:15 - 10:45 AM',
-                  style: TextStyle(
-                    color: Colors.orange,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: () {},
-            icon: const Icon(Icons.navigation),
-            label: const Text('Navigate to Mess'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              minimumSize: const Size(double.infinity, 45),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _navigateToMess,
+              icon: const Icon(Icons.navigation, size: 18),
+              label: const Text('Navigate to Mess'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  // ---- UPCOMING SECTION ----
-  Widget _buildUpcomingSection(List<DeliveryModel> upcoming) {
+// --- SwipeToggleButton (unchanged) ---
+class SwipeToggleButton extends StatefulWidget {
+  final bool isOnline;
+  final VoidCallback onToggle;
+  const SwipeToggleButton({super.key, required this.isOnline, required this.onToggle});
+  @override
+  State<SwipeToggleButton> createState() => _SwipeToggleButtonState();
+}
+
+class _SwipeToggleButtonState extends State<SwipeToggleButton> {
+  double _dragPosition = 0.0;
+  bool _isDragging = false;
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width - 40;
+    const height = 54.0;
+    final thumbWidth = screenWidth / 2;
+    final maxDrag = screenWidth - thumbWidth;
+    final targetPosition = widget.isOnline ? maxDrag : 0.0;
+    final currentPosition = _isDragging ? _dragPosition : targetPosition;
+    final double dragPercentage = (currentPosition / maxDrag).clamp(0.0, 1.0);
+    final Color backgroundColor = Color.lerp(Colors.red.shade400, Colors.green.shade600, dragPercentage)!;
+
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 30),
-            blurRadius: 8,
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Upcoming Deliveries',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${upcoming.length} pending',
-                  style: const TextStyle(
-                      color: Colors.orange, fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Column(
-            children:
-            upcoming.map((d) => UpcomingTile(delivery: d)).toList(),
-          ),
-        ],
-      ),
+      height: height,
+      width: screenWidth,
+      decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: backgroundColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))], border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5)),
+      child: Stack(children: [Row(children: [Expanded(child: Center(child: AnimatedOpacity(opacity: (!widget.isOnline && !_isDragging) ? 1.0 : 0.5, duration: const Duration(milliseconds: 200), child: const Text('Offline', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))))), Expanded(child: Center(child: AnimatedOpacity(opacity: (widget.isOnline && !_isDragging) ? 1.0 : 0.5, duration: const Duration(milliseconds: 200), child: const Text('Online', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)))))]), AnimatedPositioned(duration: _isDragging ? Duration.zero : const Duration(milliseconds: 300), curve: Curves.easeOutBack, left: currentPosition, top: 2, bottom: 2, child: GestureDetector(onHorizontalDragStart: (_) => setState(() { _isDragging = true; _dragPosition = targetPosition; }), onHorizontalDragUpdate: (d) => setState(() => _dragPosition = (_dragPosition + d.delta.dx).clamp(0.0, maxDrag)), onHorizontalDragEnd: (d) { setState(() => _isDragging = false); if ((_dragPosition > maxDrag / 2) != widget.isOnline) widget.onToggle(); }, onTap: widget.onToggle, child: Container(width: thumbWidth - 4, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(26), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2))]), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(widget.isOnline ? Icons.verified_user : Icons.power_settings_new, color: backgroundColor, size: 20), const SizedBox(width: 8), Text(widget.isOnline ? 'Online' : 'Offline', style: TextStyle(color: backgroundColor, fontWeight: FontWeight.bold, fontSize: 14))]))))]),
     );
   }
 }
