@@ -15,7 +15,7 @@ class UserModel {
     required this.email,
     required this.phone,
     required this.profilePic,
-    this.role = 'delivery',  // ✅ Changed default from 'delivery_partner' to 'delivery'
+    this.role = 'delivery_partner',  // ✅ Changed default from 'delivery_partner' to 'delivery'
     this.vehicleNumber,
   });
 
@@ -26,7 +26,7 @@ class UserModel {
       email: json['email'] ?? "",
       phone: json['phone'] ?? "",
       profilePic: json['profilePic'] ?? json['profile_pic'] ?? "",
-      role: json['role'] ?? 'delivery',  // ✅ Changed default from 'delivery_partner' to 'delivery'
+      role: json['role'] ?? 'delivery_partner',  // ✅ Changed default from 'delivery_partner' to 'delivery'
     );
   }
 

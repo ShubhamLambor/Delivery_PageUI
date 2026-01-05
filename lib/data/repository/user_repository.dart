@@ -193,12 +193,12 @@ class UserRepository {
         print('⚠️ [LOGIN] WARNING: User ID is empty - KYC will fail!');
       }
 
-      // ✅ UPDATED: Parse role with 'delivery' as fallback
+      // ✅ UPDATED: Parse role with 'delivery_partner' as fallback to match PHP
       print('🔑 [LOGIN] Parsing user role...');
       String userRole = userData['role']?.toString() ?? '';
 
       if (userRole.isEmpty) {
-        userRole = 'delivery'; // ✅ Default fallback for delivery partners
+        userRole = 'delivery_partner'; // ✅ Changed to match PHP expected value
         print('⚠️ [LOGIN] Role was empty, using fallback: $userRole');
       } else {
         print('✅ [LOGIN] Role found: $userRole');
@@ -211,7 +211,7 @@ class UserRepository {
         email: userData['email']?.toString() ?? email,
         phone: userData['phone']?.toString() ?? '',
         profilePic: userData['profile_pic']?.toString() ?? '',
-        role: userRole,  // ✅ Now uses 'delivery' as fallback
+        role: userRole,  // ✅ Now uses 'delivery_partner' as fallback
       );
 
       print('✅ [LOGIN] UserModel created:');
@@ -265,19 +265,26 @@ class UserRepository {
     clearUser();
     final uri = Uri.parse(registerUrl);
 
+    // ✅ FIXED: Normalize 'delivery' to 'delivery_partner' to match PHP validation
+    String normalizedRole = role;
+    if (role == 'delivery') {
+      normalizedRole = 'delivery_partner';
+      print('🔄 [SIGNUP] Normalizing role: "$role" → "$normalizedRole"');
+    }
+
     // ✅ Enhanced role validation
     print('🔍 [SIGNUP] Role parameter analysis:');
-    print('   Raw role value: "$role"');
-    print('   Role type: ${role.runtimeType}');
-    print('   Role length: ${role.length} characters');
-    print('   Role trimmed: "${role.trim()}"');
+    print('   Original role: "$role"');
+    print('   Normalized role: "$normalizedRole"');
+    print('   Role type: ${normalizedRole.runtimeType}');
+    print('   Role length: ${normalizedRole.length} characters');
 
     final Map<String, String> body = {
       'name': name,
       'email': email,
       'password': password,
       'phone': phone,
-      'role': role,
+      'role': normalizedRole,  // ✅ Send normalized role
     };
 
     print('🌐 [SIGNUP] API Endpoint: $uri');
@@ -314,8 +321,8 @@ class UserRepository {
       if (data.containsKey('user') && data['user'] is Map) {
         final savedRole = data['user']['role'];
         print('📋 [SIGNUP] Role saved in database: "$savedRole"');
-        if (savedRole != role) {
-          print('⚠️ [SIGNUP] WARNING: Sent role "$role" but saved as "$savedRole"');
+        if (savedRole != normalizedRole) {
+          print('⚠️ [SIGNUP] WARNING: Sent role "$normalizedRole" but saved as "$savedRole"');
         }
       }
 
@@ -373,7 +380,7 @@ class UserRepository {
     // ✅ Enhanced role validation warning
     if (currentUser.role.isEmpty) {
       print('⚠️ [KYC] WARNING: User role is empty!');
-      print('   KYC may fail. Update user role in database to "delivery"');
+      print('   KYC may fail. Update user role in database to "delivery_partner"');
     } else if (currentUser.role != 'delivery' && currentUser.role != 'delivery_partner') {
       print('⚠️ [KYC] WARNING: Unexpected role: "${currentUser.role}"');
       print('   Expected "delivery" or "delivery_partner"');
