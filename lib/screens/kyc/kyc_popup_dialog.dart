@@ -1,8 +1,11 @@
+// lib/screens/kyc/kyc_popup_dialog.dart
+
 import 'package:flutter/material.dart';
 import 'kyc_page.dart';
+import '../../data/repository/user_repository.dart'; // ✅ Import repository
 
 class KYCPopupDialog extends StatelessWidget {
-  const KYCPopupDialog({super.key});
+  const KYCPopupDialog({super.key}); // ✅ No userId needed
 
   @override
   Widget build(BuildContext context) {
@@ -22,22 +25,34 @@ class KYCPopupDialog extends StatelessWidget {
                   color: Colors.orange.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(50),
                 ),
-                child: Icon(Icons.verified_user, size: 48, color: Colors.orange[700]),
+                child: Icon(
+                    Icons.verified_user,
+                    size: 48,
+                    color: Colors.orange[700]
+                ),
               ),
               const SizedBox(height: 20),
 
               // Title
               const Text(
-                'Do Your KYC ASAP',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Colors.black87),
+                'Complete Partner KYC',
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
 
               // Subtitle
               Text(
-                'Complete your Know Your Customer verification to unlock all features and ensure smooth deliveries.',
-                style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.5),
+                'Verify your identity and vehicle details to start accepting delivery orders and earning.',
+                style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey[600],
+                    height: 1.5
+                ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),
@@ -51,11 +66,23 @@ class KYCPopupDialog extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    _benefitItem(icon: Icons.check_circle, title: 'Verified Account', description: 'Build trust with customers'),
+                    _benefitItem(
+                        icon: Icons.check_circle,
+                        title: 'Verified Account',
+                        description: 'Build trust with customers'
+                    ),
                     const SizedBox(height: 12),
-                    _benefitItem(icon: Icons.trending_up, title: 'Higher Earnings', description: 'Get access to premium deliveries'),
+                    _benefitItem(
+                        icon: Icons.trending_up,
+                        title: 'Higher Earnings',
+                        description: 'Get access to premium deliveries'
+                    ),
                     const SizedBox(height: 12),
-                    _benefitItem(icon: Icons.lock, title: 'Secure Transactions', description: 'Protected payments and data'),
+                    _benefitItem(
+                        icon: Icons.lock,
+                        title: 'Secure Transactions',
+                        description: 'Protected payments and data'
+                    ),
                   ],
                 ),
               ),
@@ -70,14 +97,25 @@ class KYCPopupDialog extends StatelessWidget {
                     Navigator.pop(context); // Close dialog
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const KYCPage()),
+                      MaterialPageRoute(
+                        builder: (context) => const KYCPage(), // ✅ No userId needed
+                      ),
                     );
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.orange[700],
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)
+                    ),
                   ),
-                  child: const Text('Start KYC Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+                  child: const Text(
+                      'Start KYC Now',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white
+                      )
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -87,10 +125,19 @@ class KYCPopupDialog extends StatelessWidget {
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)
+                    ),
                     side: const BorderSide(color: Colors.grey),
                   ),
-                  child: const Text('Do It Later', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey)),
+                  child: const Text(
+                      'Do It Later',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey
+                      )
+                  ),
                 ),
               ),
             ],
@@ -100,7 +147,11 @@ class KYCPopupDialog extends StatelessWidget {
     );
   }
 
-  Widget _benefitItem({required IconData icon, required String title, required String description}) {
+  Widget _benefitItem({
+    required IconData icon,
+    required String title,
+    required String description
+  }) {
     return Row(
       children: [
         Icon(icon, color: Colors.green, size: 20),
@@ -109,8 +160,18 @@ class KYCPopupDialog extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.black87)),
-              Text(description, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87
+                  )
+              ),
+              Text(
+                  description,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600])
+              ),
             ],
           ),
         ),

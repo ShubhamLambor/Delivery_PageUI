@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class ChatService {
   // ✅ Your server IP
-  static const String _baseUrl = "http://192.168.0.122:8000";
+  static const String _baseUrl = "http://10.201.117.147:8000";
 
   /// Sends a message to the chatbot and returns the response
   Future<ChatbotResponse> sendMessage(String message, {String userId = "flutter_user"}) async {

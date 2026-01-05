@@ -1,6 +1,7 @@
 // lib/models/user_model.dart
+
 class UserModel {
-  final int id;
+  final String id;
   final String name;
   final String email;
   final String phone;
@@ -14,24 +15,21 @@ class UserModel {
     required this.email,
     required this.phone,
     required this.profilePic,
-    this.role = 'delivery_partner', // ✅ Changed from 'customer' to 'delivery_partner'
+    this.role = 'delivery',  // ✅ Changed default from 'delivery_partner' to 'delivery'
     this.vehicleNumber,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
-      id: json['id'] is int ? json['id'] : int.tryParse(json['id'].toString()) ?? 0,
+      id: json['uid']?.toString() ?? json['id']?.toString() ?? '',
       name: json['name'] ?? "",
       email: json['email'] ?? "",
       phone: json['phone'] ?? "",
       profilePic: json['profilePic'] ?? json['profile_pic'] ?? "",
-      role: json['role'] ?? 'delivery_partner', // ✅ Changed default
+      role: json['role'] ?? 'delivery',  // ✅ Changed default from 'delivery_partner' to 'delivery'
     );
   }
 
-  // -----------------------------
-  // UserModel → JSON (for API)
-  // -----------------------------
   Map<String, dynamic> toJson() {
     return {
       "id": id,
@@ -43,11 +41,8 @@ class UserModel {
     };
   }
 
-  // -----------------------------
-  // copyWith() for local updates
-  // -----------------------------
   UserModel copyWith({
-    int? id,
+    String? id,
     String? name,
     String? email,
     String? phone,

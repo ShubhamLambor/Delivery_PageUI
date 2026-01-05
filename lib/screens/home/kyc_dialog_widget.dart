@@ -5,12 +5,10 @@ import 'package:flutter/services.dart';
 import '../../data/repository/user_repository.dart';
 
 class KycDialogWidget extends StatefulWidget {
-  final int userId; // Pass user ID if backend needs it
   final VoidCallback onKycCompleted;
 
   const KycDialogWidget({
     super.key,
-    required this.userId,
     required this.onKycCompleted
   });
 
@@ -51,16 +49,15 @@ class _KycDialogWidgetState extends State<KycDialogWidget> {
     try {
       final repo = UserRepository();
 
-      // Call the specific Delivery Partner API
+      // ✅ Call without userId - it's auto-fetched inside the method
       await repo.submitDeliveryPartnerKyc(
-        userId: widget.userId,
         vehicleType: _selectedVehicleType,
         vehicleNumber: _vehicleNumberController.text.trim(),
         drivingLicense: _licenseController.text.trim(),
         aadharNumber: _aadharController.text.trim(),
-        panNumber: _panController.text.trim(),
+        panNumber: _panController.text.trim().toUpperCase(),
         bankAccountNumber: _bankAccountController.text.trim(),
-        ifscCode: _ifscController.text.trim(),
+        ifscCode: _ifscController.text.trim().toUpperCase(),
       );
 
       if (!mounted) return;
@@ -69,13 +66,16 @@ class _KycDialogWidgetState extends State<KycDialogWidget> {
         const SnackBar(content: Text('KYC Submitted Successfully!'), backgroundColor: Colors.green),
       );
 
-      widget.onKycCompleted(); // Callback to parent to close dialog/update state
-      Navigator.pop(context); // Close the dialog
+      widget.onKycCompleted();
+      Navigator.pop(context);
 
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Submission failed: ${e.toString().replaceAll("Exception:", "")}'), backgroundColor: Colors.red),
+        SnackBar(
+            content: Text('Submission failed: ${e.toString().replaceAll("Exception:", "")}'),
+            backgroundColor: Colors.red
+        ),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -85,7 +85,7 @@ class _KycDialogWidgetState extends State<KycDialogWidget> {
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
-      onWillPop: () async => false, // Prevent closing by back button
+      onWillPop: () async => false,
       child: AlertDialog(
         title: const Text('Partner KYC Required'),
         content: SizedBox(
@@ -104,7 +104,10 @@ class _KycDialogWidgetState extends State<KycDialogWidget> {
 
                   DropdownButtonFormField<String>(
                     value: _selectedVehicleType,
-                    decoration: const InputDecoration(labelText: 'Vehicle Type', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(
+                        labelText: 'Vehicle Type',
+                        border: OutlineInputBorder()
+                    ),
                     items: ['Bike', 'Scooter', 'Cycle', 'Electric Bike']
                         .map((type) => DropdownMenuItem(value: type, child: Text(type)))
                         .toList(),
@@ -119,25 +122,43 @@ class _KycDialogWidgetState extends State<KycDialogWidget> {
                   const SizedBox(height: 12),
 
                   _buildTextField(
-                      _aadharController, 'Aadhar Number',
-                      isNumber: true, maxLength: 12
+                      _aadharController,
+                      'Aadhar Number',
+                      isNumber: true,
+                      maxLength: 12,
+                      validator: _validateAadhar
                   ),
                   const SizedBox(height: 12),
 
-                  _buildTextField(_panController, 'PAN Number'),
+                  _buildTextField(
+                      _panController,
+                      'PAN Number',
+                      maxLength: 10,
+                      validator: _validatePAN,
+                      textCapitalization: TextCapitalization.characters
+                  ),
                   const SizedBox(height: 12),
 
-                  _buildTextField(_bankAccountController, 'Bank Account No.', isNumber: true),
+                  _buildTextField(
+                      _bankAccountController,
+                      'Bank Account No.',
+                      isNumber: true
+                  ),
                   const SizedBox(height: 12),
 
-                  _buildTextField(_ifscController, 'IFSC Code'),
+                  _buildTextField(
+                      _ifscController,
+                      'IFSC Code',
+                      maxLength: 11,
+                      validator: _validateIFSC,
+                      textCapitalization: TextCapitalization.characters
+                  ),
                 ],
               ),
             ),
           ),
         ),
         actions: [
-          // No Cancel button - Mandatory process
           ElevatedButton(
             onPressed: _loading ? null : _submitKyc,
             style: ElevatedButton.styleFrom(
@@ -145,18 +166,63 @@ class _KycDialogWidgetState extends State<KycDialogWidget> {
               minimumSize: const Size(double.infinity, 45),
             ),
             child: _loading
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Submit Details', style: TextStyle(color: Colors.white)),
+                ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2
+                )
+            )
+                : const Text(
+                'Submit Details',
+                style: TextStyle(color: Colors.white)
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, {bool isNumber = false, int? maxLength}) {
+  String? _validateAadhar(String? value) {
+    if (value == null || value.isEmpty) return 'Aadhar is required';
+    if (value.length != 12) return 'Aadhar must be 12 digits';
+    if (!RegExp(r'^\d{12}$').hasMatch(value)) return 'Invalid Aadhar format';
+    return null;
+  }
+
+  String? _validatePAN(String? value) {
+    if (value == null || value.isEmpty) return 'PAN is required';
+    final cleaned = value.toUpperCase();
+    if (cleaned.length != 10) return 'PAN must be 10 characters';
+    if (!RegExp(r'^[A-Z]{5}[0-9]{4}[A-Z]{1}$').hasMatch(cleaned)) {
+      return 'Invalid PAN format';
+    }
+    return null;
+  }
+
+  String? _validateIFSC(String? value) {
+    if (value == null || value.isEmpty) return 'IFSC Code is required';
+    final cleaned = value.toUpperCase();
+    if (cleaned.length != 11) return 'IFSC must be 11 characters';
+    if (!RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$').hasMatch(cleaned)) {
+      return 'Invalid IFSC format';
+    }
+    return null;
+  }
+
+  Widget _buildTextField(
+      TextEditingController controller,
+      String label, {
+        bool isNumber = false,
+        int? maxLength,
+        String? Function(String?)? validator,
+        TextCapitalization textCapitalization = TextCapitalization.none
+      }) {
     return TextFormField(
       controller: controller,
       keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      textCapitalization: textCapitalization,
       inputFormatters: [
         if (isNumber) FilteringTextInputFormatter.digitsOnly,
         if (maxLength != null) LengthLimitingTextInputFormatter(maxLength),
@@ -165,8 +231,9 @@ class _KycDialogWidgetState extends State<KycDialogWidget> {
         labelText: label,
         border: const OutlineInputBorder(),
         isDense: true,
+        counterText: '',
       ),
-      validator: (v) => v == null || v.isEmpty ? '$label is required' : null,
+      validator: validator ?? (v) => v == null || v.isEmpty ? '$label is required' : null,
     );
   }
 }

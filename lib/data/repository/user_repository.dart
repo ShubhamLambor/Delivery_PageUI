@@ -21,53 +21,80 @@ class UserRepository {
   });
 
   void clearUser() {
-    print('🧹 Clearing old user data');
+    print('🧹 [CLEAR_USER] Clearing old user data');
     DummyData.user = UserModel(
-      id: 0,
+      id: '',
       name: '',
       email: '',
       phone: '',
       profilePic: '',
       role: '',
     );
+    print('✅ [CLEAR_USER] User data cleared');
   }
 
-  // -------- dummy helpers (keep existing UI working) --------
-  UserModel getUser() => DummyData.user;
+  // -------- User Getters & Helpers --------
+  UserModel getUser() {
+    print('📋 [GET_USER] Fetching current user');
+    print('   User ID: ${DummyData.user.id}');
+    print('   Name: ${DummyData.user.name}');
+    print('   Email: ${DummyData.user.email}');
+    return DummyData.user;
+  }
 
   Future<UserModel> getUserProfile() async {
+    print('📋 [GET_PROFILE] Fetching user profile');
     await Future.delayed(const Duration(milliseconds: 500));
     return DummyData.user;
   }
 
   Future<void> logout() async {
-    clearUser(); // Clear user data on logout
+    print('🚪 [LOGOUT] Logging out user');
+    clearUser();
     await Future.delayed(const Duration(milliseconds: 300));
+    print('✅ [LOGOUT] Logout complete');
   }
 
   void updateUserName(String newName) {
+    print('✏️ [UPDATE_NAME] Updating user name to: $newName');
     DummyData.user = DummyData.user.copyWith(name: newName);
   }
 
   void updateProfilePic(String newUrl) {
+    print('🖼️ [UPDATE_PIC] Updating profile pic to: $newUrl');
     DummyData.user = DummyData.user.copyWith(profilePic: newUrl);
   }
 
-  // ✅ ---------------- REAL LOGIN with ROBUST ID PARSING ----------------
+  /// ✅ Restore user session from saved data (used by AuthController)
+  void restoreUserSession(UserModel user) {
+    print('🔄 [RESTORE] Restoring user session to DummyData');
+    print('   User ID: ${user.id}');
+    print('   Name: ${user.name}');
+    print('   Email: ${user.email}');
+    print('   Role: ${user.role}');
+    DummyData.user = user;
+    print('✅ [RESTORE] User session restored successfully');
+  }
+
+  // ✅ ---------------- LOGIN ----------------
   Future<UserModel> login({
     required String email,
     required String password,
   }) async {
-    // ✅ Clear old user data first
+    print('\n════════════════════════════════════════');
+    print('🔐 [LOGIN] Starting login process');
+    print('════════════════════════════════════════');
+
     clearUser();
 
     final uri = Uri.parse(loginUrl);
-
-    print('════════════════════════════════════════');
-    print('🌐 LOGIN API REQUEST: $uri');
-    print('📧 Email: $email');
+    print('🌐 [LOGIN] API Endpoint: $uri');
+    print('📧 [LOGIN] Email: $email');
+    print('🔒 [LOGIN] Password length: ${password.length} characters');
 
     try {
+      print('⏳ [LOGIN] Sending POST request...');
+
       final response = await http.post(
         uri,
         headers: {
@@ -81,93 +108,149 @@ class UserRepository {
       ).timeout(
         const Duration(seconds: 30),
         onTimeout: () {
+          print('⏱️ [LOGIN] Request timed out after 30 seconds');
           throw Exception('Connection timeout. Please try again.');
         },
       );
 
-      print('📥 LOGIN RESPONSE: ${response.statusCode}');
-      print('📦 Body: ${response.body}');
+      print('📥 [LOGIN] Response received');
+      print('   Status Code: ${response.statusCode}');
+      print('   Headers: ${response.headers}');
+      print('   Body Length: ${response.body.length} bytes');
+      print('   Raw Body: ${response.body}');
 
       if (response.statusCode != 200) {
-        print('❌ Login failed with status: ${response.statusCode}');
+        print('❌ [LOGIN] Non-200 status code: ${response.statusCode}');
         try {
           final data = jsonDecode(response.body);
+          print('   Error data: $data');
           final msg = data['message']?.toString() ?? 'Server error ${response.statusCode}';
           throw Exception(msg);
         } catch (e) {
+          print('   Failed to parse error response: $e');
           if (e.toString().contains('Exception:')) rethrow;
           throw Exception('Server error: ${response.statusCode}');
         }
       }
 
+      print('🔍 [LOGIN] Parsing JSON response...');
       final data = jsonDecode(response.body);
+      print('   Parsed data type: ${data.runtimeType}');
+      print('   Parsed data: $data');
+
       Map<String, dynamic> actualData = data;
 
       // Check if response has nested "data" field
       if (data.containsKey('data') && data['data'] is Map) {
         actualData = data['data'] as Map<String, dynamic>;
-        print('📋 Using nested data structure');
+        print('📦 [LOGIN] Using nested data structure');
+        print('   Nested data: $actualData');
       }
 
+      print('✅ [LOGIN] Checking success status...');
       if (actualData['success'] == false) {
         final msg = actualData['message']?.toString() ?? 'Login failed';
+        print('❌ [LOGIN] Login failed: $msg');
         throw Exception(msg);
       }
 
+      print('👤 [LOGIN] Extracting user data...');
       final userData = actualData['user'];
       if (userData == null) {
+        print('❌ [LOGIN] No user data in response');
+        print('   Available keys: ${actualData.keys.toList()}');
         throw Exception('Invalid response: No user data');
       }
 
-      print('👤 Raw User Data: $userData');
+      print('📋 [LOGIN] Raw User Data:');
+      print('   Type: ${userData.runtimeType}');
+      print('   Content: $userData');
+      print('   Keys: ${userData.keys.toList()}');
 
-      // ✅ ROBUST ID PARSING LOGIC
-      // Checks 'uid', 'id', and 'user_id' to find a valid ID
-      int userId = 0;
+      // ✅ Parse user ID as String
+      print('🔢 [LOGIN] Parsing user ID...');
+      String userId = '';
+
       if (userData['uid'] != null) {
-        userId = int.tryParse(userData['uid'].toString()) ?? 0;
+        print('   Found uid: ${userData['uid']}');
+        userId = userData['uid'].toString();
+        print('   Parsed from uid: $userId');
       } else if (userData['id'] != null) {
-        userId = int.tryParse(userData['id'].toString()) ?? 0;
+        print('   Found id: ${userData['id']}');
+        userId = userData['id'].toString();
+        print('   Parsed from id: $userId');
       } else if (userData['user_id'] != null) {
-        userId = int.tryParse(userData['user_id'].toString()) ?? 0;
+        print('   Found user_id: ${userData['user_id']}');
+        userId = userData['user_id'].toString();
+        print('   Parsed from user_id: $userId');
+      } else {
+        print('⚠️ [LOGIN] No ID field found in user data');
+        print('   Available fields: ${userData.keys.toList()}');
       }
 
-      print('🆔 Parsed User ID: $userId');
-      if (userId == 0) print('⚠️ WARNING: User ID is 0. KYC updates will fail.');
+      print('🆔 [LOGIN] Final User ID: $userId');
+      if (userId.isEmpty) {
+        print('⚠️ [LOGIN] WARNING: User ID is empty - KYC will fail!');
+      }
 
-      // ✅ Create user model with fresh data
+      // ✅ UPDATED: Parse role with 'delivery' as fallback
+      print('🔑 [LOGIN] Parsing user role...');
+      String userRole = userData['role']?.toString() ?? '';
+
+      if (userRole.isEmpty) {
+        userRole = 'delivery'; // ✅ Default fallback for delivery partners
+        print('⚠️ [LOGIN] Role was empty, using fallback: $userRole');
+      } else {
+        print('✅ [LOGIN] Role found: $userRole');
+      }
+
+      print('🏗️ [LOGIN] Creating UserModel...');
       final user = UserModel(
         id: userId,
         name: userData['name']?.toString() ?? email.split('@')[0],
         email: userData['email']?.toString() ?? email,
         phone: userData['phone']?.toString() ?? '',
         profilePic: userData['profile_pic']?.toString() ?? '',
-        role: userData['role']?.toString() ?? 'delivery',
-        // Optional: Parse vehicle number if available in login response
-        // vehicleNumber: userData['vehicle_number']?.toString(),
+        role: userRole,  // ✅ Now uses 'delivery' as fallback
       );
 
-      // ✅ Store the NEW user data
+      print('✅ [LOGIN] UserModel created:');
+      print('   ID: ${user.id}');
+      print('   Name: ${user.name}');
+      print('   Email: ${user.email}');
+      print('   Phone: ${user.phone}');
+      print('   Role: ${user.role}');
+
       DummyData.user = user;
+      print('💾 [LOGIN] User saved to DummyData');
+      print('✅ [LOGIN] Login successful!');
+      print('════════════════════════════════════════\n');
+
       return user;
 
     } on SocketException catch (e) {
-      print('❌ SocketException: $e');
+      print('❌ [LOGIN] SocketException caught');
+      print('   Error: $e');
       throw Exception('Network error. Please check your internet connection.');
     } on http.ClientException catch (e) {
-      print('❌ ClientException: $e');
+      print('❌ [LOGIN] ClientException caught');
+      print('   Error: $e');
       throw Exception('Network error. Please check your internet connection.');
     } on FormatException catch (e) {
-      print('❌ FormatException: $e');
+      print('❌ [LOGIN] FormatException caught');
+      print('   Error: $e');
       throw Exception('Invalid response from server');
-    } catch (e) {
-      print('❌ Login Error: $e');
+    } catch (e, stackTrace) {
+      print('❌ [LOGIN] Unexpected error caught');
+      print('   Error type: ${e.runtimeType}');
+      print('   Error: $e');
+      print('   Stack trace: $stackTrace');
       if (e.toString().contains('Exception:')) rethrow;
       throw Exception('Login failed: ${e.toString()}');
     }
   }
 
-  // ✅ ---------------- BASIC SIGNUP (Unchanged) ----------------
+  // ✅ ---------------- BASIC SIGNUP ----------------
   Future<void> signupBasic({
     required String name,
     required String email,
@@ -175,129 +258,269 @@ class UserRepository {
     required String phone,
     required String role,
   }) async {
-    clearUser();
-    final uri = Uri.parse(registerUrl);
-    final Map<String, String> body = {
-      'name': name, 'email': email, 'password': password, 'phone': phone, 'role': role,
-    };
-
-    print('🌐 SIGNUP API REQUEST: $uri');
-    try {
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: body,
-      ).timeout(const Duration(seconds: 30));
-
-      print('📥 SIGNUP RESPONSE: ${response.statusCode}');
-
-      if (response.statusCode != 200 && response.statusCode != 201) {
-        throw Exception('Server error ${response.statusCode}');
-      }
-
-      final data = jsonDecode(response.body);
-      if (data['success'] != true) throw Exception(data['message'] ?? 'Registration failed');
-
-      print('✅ Registration successful!');
-
-    } catch (e) {
-      print('❌ Signup Error: $e');
-      rethrow;
-    }
-  }
-
-  // ---------------- FULL DELIVERY PARTNER SIGNUP (Legacy) ----------------
-  Future<void> signup({
-    required String username,
-    required String email,
-    required String password,
-    required String phone,
-    required String vehicleType,
-    required String vehicleNumber,
-    required String drivingLicense,
-    required String aadharNumber,
-    required String panNumber,
-    required String bankAccountNumber,
-    required String ifscCode,
-  }) async {
-    // Legacy full signup code (kept for reference, uses registerUrl)
-    clearUser();
-    final uri = Uri.parse(registerUrl);
-    final Map<String, String> body = {
-      'name': username, 'email': email, 'password': password, 'phone': phone,
-      'role': 'delivery_partner', 'vehicle_type': vehicleType,
-      'vehicle_number': vehicleNumber, 'driving_license': drivingLicense,
-      'aadhar_number': aadharNumber, 'pan_number': panNumber,
-      'bank_account_number': bankAccountNumber, 'ifsc_code': ifscCode,
-    };
-
-    try {
-      final response = await http.post(uri, body: body);
-      if (response.statusCode != 200) throw Exception('Failed');
-    } catch (e) { rethrow; }
-  }
-
-
-  // ✅ ---------------- NEW: SUBMIT KYC (Called from Home/Profile) ----------------
-  Future<void> submitDeliveryPartnerKyc({
-    required int userId,
-    required String vehicleType,
-    required String vehicleNumber,
-    required String drivingLicense,
-    required String aadharNumber,
-    required String panNumber,
-    required String bankAccountNumber,
-    required String ifscCode,
-  }) async {
-    final uri = Uri.parse(kycUrl); // delivery_partners.php
-
+    print('\n════════════════════════════════════════');
+    print('📝 [SIGNUP] Starting signup process');
     print('════════════════════════════════════════');
-    print('🌐 SUBMITTING KYC DATA to $uri');
 
-    if (userId == 0) {
-      print('❌ ERROR: User ID is 0. Aborting request.');
-      throw Exception('Invalid User ID. Please re-login.');
-    }
+    clearUser();
+    final uri = Uri.parse(registerUrl);
+
+    // ✅ Enhanced role validation
+    print('🔍 [SIGNUP] Role parameter analysis:');
+    print('   Raw role value: "$role"');
+    print('   Role type: ${role.runtimeType}');
+    print('   Role length: ${role.length} characters');
+    print('   Role trimmed: "${role.trim()}"');
 
     final Map<String, String> body = {
-      'user_id': userId.toString(),
-      'vehicle_type': vehicleType,
-      'vehicle_number': vehicleNumber,
-      'driving_license': drivingLicense,
-      'aadhar_number': aadharNumber,
-      'pan_number': panNumber,
-      'bank_account_number': bankAccountNumber,
-      'ifsc_code': ifscCode,
+      'name': name,
+      'email': email,
+      'password': password,
+      'phone': phone,
+      'role': role,
     };
 
-    print('📤 Body: $body');
+    print('🌐 [SIGNUP] API Endpoint: $uri');
+    print('📤 [SIGNUP] Request body:');
+    body.forEach((key, value) {
+      print('   $key: "$value"');
+    });
 
     try {
+      print('⏳ [SIGNUP] Sending POST request...');
+
       final response = await http.post(
         uri,
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         },
         body: body,
+        encoding: Encoding.getByName('utf-8'),
       ).timeout(const Duration(seconds: 30));
 
-      print('📥 KYC RESPONSE: ${response.statusCode}');
-      print('📦 Body: ${response.body}');
+      print('📥 [SIGNUP] Response received');
+      print('   Status Code: ${response.statusCode}');
+      print('   Body: ${response.body}');
 
       if (response.statusCode != 200 && response.statusCode != 201) {
+        print('❌ [SIGNUP] Server error: ${response.statusCode}');
         throw Exception('Server error ${response.statusCode}');
       }
 
       final data = jsonDecode(response.body);
-      if (data is Map && data.containsKey('success') && data['success'] == false) {
-        throw Exception(data['message'] ?? 'KYC update failed');
+      print('🔍 [SIGNUP] Parsed response: $data');
+
+      // ✅ Check what role was actually saved
+      if (data.containsKey('user') && data['user'] is Map) {
+        final savedRole = data['user']['role'];
+        print('📋 [SIGNUP] Role saved in database: "$savedRole"');
+        if (savedRole != role) {
+          print('⚠️ [SIGNUP] WARNING: Sent role "$role" but saved as "$savedRole"');
+        }
       }
 
-      print('✅ KYC Submitted Successfully!');
+      if (data['success'] != true) {
+        final msg = data['message'] ?? 'Registration failed';
+        print('❌ [SIGNUP] Registration failed: $msg');
+        throw Exception(msg);
+      }
 
-    } catch (e) {
-      print('❌ KYC Error: $e');
-      rethrow;
+      print('✅ [SIGNUP] Registration successful!');
+      print('════════════════════════════════════════\n');
+
+    } on SocketException catch (e) {
+      print('❌ [SIGNUP] Network Error: $e');
+      throw Exception('Network error. Please check your internet connection.');
+    } on TimeoutException catch (e) {
+      print('❌ [SIGNUP] Timeout Error: $e');
+      throw Exception('Request timeout. Please try again.');
+    } catch (e, stackTrace) {
+      print('❌ [SIGNUP] Error: $e');
+      print('   Stack trace: $stackTrace');
+      if (e.toString().contains('Exception:')) rethrow;
+      throw Exception('Registration failed: ${e.toString()}');
+    }
+  }
+
+  // ✅ ---------------- SUBMIT DELIVERY PARTNER KYC ----------------
+  Future<void> submitDeliveryPartnerKyc({
+    String? vehicleType,
+    String? vehicleNumber,
+    String? drivingLicense,
+    String? aadharNumber,
+    String? panNumber,
+    String? bankAccountNumber,
+    String? ifscCode,
+  }) async {
+    print('\n════════════════════════════════════════');
+    print('🚗 [KYC] Starting KYC submission');
+    print('════════════════════════════════════════');
+
+    final uri = Uri.parse(kycUrl);
+    print('🌐 [KYC] API Endpoint: $uri');
+
+    // Auto-fetch logged-in user ID
+    print('👤 [KYC] Fetching logged-in user...');
+    final currentUser = getUser();
+    final userId = currentUser.id;
+
+    print('🆔 [KYC] Auto-fetched User ID: $userId');
+    print('👤 [KYC] User Details:');
+    print('   Name: ${currentUser.name}');
+    print('   Email: ${currentUser.email}');
+    print('   Role: "${currentUser.role}"');
+
+    // ✅ Enhanced role validation warning
+    if (currentUser.role.isEmpty) {
+      print('⚠️ [KYC] WARNING: User role is empty!');
+      print('   KYC may fail. Update user role in database to "delivery"');
+    } else if (currentUser.role != 'delivery' && currentUser.role != 'delivery_partner') {
+      print('⚠️ [KYC] WARNING: Unexpected role: "${currentUser.role}"');
+      print('   Expected "delivery" or "delivery_partner"');
+    }
+
+    // Validate User ID
+    if (userId.isEmpty) {
+      print('⚠️ [KYC] ERROR: User ID is empty!');
+      throw Exception('User not logged in. Please login first.');
+    }
+
+    // Validate fields
+    print('✅ [KYC] Validating fields...');
+    if (vehicleType == null || vehicleType.isEmpty) {
+      throw Exception('Vehicle type is required');
+    }
+    if (vehicleNumber == null || vehicleNumber.isEmpty) {
+      throw Exception('Vehicle number is required');
+    }
+    if (drivingLicense == null || drivingLicense.isEmpty) {
+      throw Exception('Driving license is required');
+    }
+    if (aadharNumber == null || aadharNumber.isEmpty) {
+      throw Exception('Aadhar number is required');
+    }
+    if (panNumber == null || panNumber.isEmpty) {
+      throw Exception('PAN number is required');
+    }
+    if (bankAccountNumber == null || bankAccountNumber.isEmpty) {
+      throw Exception('Bank account number is required');
+    }
+    if (ifscCode == null || ifscCode.isEmpty) {
+      throw Exception('IFSC code is required');
+    }
+
+    print('   ✓ All fields validated');
+
+    // ✅ Build body - ensure all values are clean strings
+    final Map<String, String> body = {
+      'user_id': userId.trim(),
+      'vehicle_type': vehicleType.trim(),
+      'vehicle_number': vehicleNumber.trim(),
+      'driving_license': drivingLicense.trim(),
+      'aadhar_number': aadharNumber.trim(),
+      'pan_number': panNumber.trim(),
+      'bank_account_number': bankAccountNumber.trim(),
+      'ifsc_code': ifscCode.trim(),
+    };
+
+    print('📤 [KYC] Request Body:');
+    body.forEach((key, value) {
+      print('   $key: $value');
+    });
+
+    try {
+      print('⏳ [KYC] Sending POST request...');
+
+      final response = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'Accept': 'application/json',
+        },
+        body: body,
+        encoding: Encoding.getByName('utf-8'),
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          print('⏱️ [KYC] Request timed out after 30 seconds');
+          throw Exception('Connection timeout. Please try again.');
+        },
+      );
+
+      print('📥 [KYC] Response received');
+      print('   Status Code: ${response.statusCode}');
+      print('   Headers: ${response.headers}');
+      print('   Body Length: ${response.body.length} bytes');
+      print('   Raw Body: ${response.body}');
+
+      // ✅ Handle empty response body
+      if (response.body.isEmpty) {
+        print('⚠️ [KYC] Empty response body received');
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          print('✅ [KYC] Status is success despite empty body');
+          print('════════════════════════════════════════\n');
+          return;
+        } else {
+          throw Exception('Server returned empty response with status ${response.statusCode}');
+        }
+      }
+
+      // Handle non-success status codes
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        print('❌ [KYC] Non-success status code: ${response.statusCode}');
+
+        try {
+          final data = jsonDecode(response.body);
+          final errorMsg = data['error']?.toString() ??
+              data['message']?.toString() ??
+              'Server error ${response.statusCode}';
+          throw Exception(errorMsg);
+        } catch (e) {
+          if (e.toString().contains('Exception:')) rethrow;
+          throw Exception('Server error ${response.statusCode}');
+        }
+      }
+
+      // Parse successful response
+      print('🔍 [KYC] Parsing JSON response...');
+      final data = jsonDecode(response.body);
+      print('   Parsed data: $data');
+
+      // Check for error in response
+      if (data is Map) {
+        if (data.containsKey('error')) {
+          throw Exception(data['error'].toString());
+        }
+        if (data.containsKey('success') && data['success'] == false) {
+          final msg = data['message'] ?? data['error'] ?? 'KYC submission failed';
+          throw Exception(msg);
+        }
+      }
+
+      print('✅ [KYC] Submitted Successfully!');
+      print('📝 [KYC] Response: ${data['message'] ?? 'Success'}');
+      print('════════════════════════════════════════\n');
+
+    } on SocketException catch (e) {
+      print('❌ [KYC] SocketException: $e');
+      throw Exception('Network error. Please check your internet connection.');
+    } on http.ClientException catch (e) {
+      print('❌ [KYC] ClientException: $e');
+      throw Exception('Network error. Please try again.');
+    } on FormatException catch (e) {
+      print('❌ [KYC] FormatException: $e');
+      print('   Response was not valid JSON');
+      throw Exception('Invalid response from server');
+    } on TimeoutException catch (e) {
+      print('❌ [KYC] TimeoutException: $e');
+      throw Exception('Request timeout. Please try again.');
+    } catch (e, stackTrace) {
+      print('❌ [KYC] Unexpected Error:');
+      print('   Type: ${e.runtimeType}');
+      print('   Error: $e');
+      print('   Stack trace: $stackTrace');
+      if (e.toString().contains('Exception:')) rethrow;
+      throw Exception('KYC submission failed: ${e.toString()}');
     }
   }
 }
