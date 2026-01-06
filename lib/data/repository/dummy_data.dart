@@ -1,4 +1,5 @@
 // lib/data/repository/dummy_data.dart
+
 import '../../models/delivery_model.dart';
 import '../../models/earning_model.dart';
 import '../../models/user_model.dart';
@@ -66,10 +67,11 @@ class DummyData {
   ];
 
   static UserModel user = UserModel(
-    id: '',  // ✅ Empty string instead of 0
+    id: '',
     name: "Shubham Delivery",
     email: "delivery@example.com",
     phone: "9876543210",
     profilePic: "https://cdn-icons-png.flaticon.com/512/3177/3177440.png",
+    role: "delivery",  // ✅ ADDED this line
   );
 }

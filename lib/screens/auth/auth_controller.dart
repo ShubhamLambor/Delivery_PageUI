@@ -39,7 +39,7 @@ class AuthController extends ChangeNotifier {
       final userEmail = prefs.getString('userEmail') ?? '';
       final userPhone = prefs.getString('userPhone') ?? '';
       final userProfilePic = prefs.getString('userProfilePic') ?? '';
-      final userRole = prefs.getString('userRole') ?? 'delivery_partner';
+      final userRole = prefs.getString('userRole') ?? 'delivery';
 
       print('   Loaded from SharedPreferences:');
       print('   - User ID: $userId');
@@ -189,7 +189,7 @@ class AuthController extends ChangeNotifier {
         email: email,
         password: password,
         phone: phone,
-        role: 'delivery_partner',
+        role: 'delivery',
       );
 
       _loading = false;

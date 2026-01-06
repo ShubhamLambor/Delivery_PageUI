@@ -193,12 +193,12 @@ class UserRepository {
         print('⚠️ [LOGIN] WARNING: User ID is empty - KYC will fail!');
       }
 
-      // ✅ UPDATED: Parse role with 'delivery_partner' as fallback to match PHP
+      // ✅ Parse role from response
       print('🔑 [LOGIN] Parsing user role...');
       String userRole = userData['role']?.toString() ?? '';
 
       if (userRole.isEmpty) {
-        userRole = 'delivery_partner'; // ✅ Changed to match PHP expected value
+        userRole = 'delivery';  // ✅ CHANGED from 'delivery_partner'
         print('⚠️ [LOGIN] Role was empty, using fallback: $userRole');
       } else {
         print('✅ [LOGIN] Role found: $userRole');
@@ -211,7 +211,7 @@ class UserRepository {
         email: userData['email']?.toString() ?? email,
         phone: userData['phone']?.toString() ?? '',
         profilePic: userData['profile_pic']?.toString() ?? '',
-        role: userRole,  // ✅ Now uses 'delivery_partner' as fallback
+        role: userRole,
       );
 
       print('✅ [LOGIN] UserModel created:');
@@ -265,26 +265,17 @@ class UserRepository {
     clearUser();
     final uri = Uri.parse(registerUrl);
 
-    // ✅ FIXED: Normalize 'delivery' to 'delivery_partner' to match PHP validation
-    String normalizedRole = role;
-    if (role == 'delivery') {
-      normalizedRole = 'delivery_partner';
-      print('🔄 [SIGNUP] Normalizing role: "$role" → "$normalizedRole"');
-    }
-
-    // ✅ Enhanced role validation
+    // ✅ Role logging
     print('🔍 [SIGNUP] Role parameter analysis:');
-    print('   Original role: "$role"');
-    print('   Normalized role: "$normalizedRole"');
-    print('   Role type: ${normalizedRole.runtimeType}');
-    print('   Role length: ${normalizedRole.length} characters');
+    print('   Role value: "$role"');
+    print('   Role type: ${role.runtimeType}');
 
     final Map<String, String> body = {
       'name': name,
       'email': email,
       'password': password,
       'phone': phone,
-      'role': normalizedRole,  // ✅ Send normalized role
+      'role': role,
     };
 
     print('🌐 [SIGNUP] API Endpoint: $uri');
@@ -316,19 +307,48 @@ class UserRepository {
 
       final data = jsonDecode(response.body);
       print('🔍 [SIGNUP] Parsed response: $data');
+      print('   Response keys: ${data.keys.toList()}');
 
       // ✅ Check what role was actually saved
       if (data.containsKey('user') && data['user'] is Map) {
         final savedRole = data['user']['role'];
         print('📋 [SIGNUP] Role saved in database: "$savedRole"');
-        if (savedRole != normalizedRole) {
-          print('⚠️ [SIGNUP] WARNING: Sent role "$normalizedRole" but saved as "$savedRole"');
+        if (savedRole != role) {
+          print('⚠️ [SIGNUP] WARNING: Sent role "$role" but saved as "$savedRole"');
         }
       }
 
-      if (data['success'] != true) {
-        final msg = data['message'] ?? 'Registration failed';
+      // ✅ FIXED: Multiple success detection methods
+      bool isSuccess = false;
+
+      // Method 1: Check for explicit success field
+      if (data.containsKey('success')) {
+        if (data['success'] == true) {
+          print('✅ [SIGNUP] Success detected via success field = true');
+          isSuccess = true;
+        } else if (data['success'] == false) {
+          final msg = data['message'] ?? 'Registration failed';
+          print('❌ [SIGNUP] Registration failed: $msg');
+          throw Exception(msg);
+        }
+      }
+
+      // Method 2: Check for token and user (indicates successful registration)
+      if (!isSuccess && data.containsKey('token') && data.containsKey('user')) {
+        print('✅ [SIGNUP] Success detected via token + user presence');
+        isSuccess = true;
+      }
+
+      // Method 3: Check status code + user data
+      if (!isSuccess && (response.statusCode == 200 || response.statusCode == 201) && data.containsKey('user')) {
+        print('✅ [SIGNUP] Success detected via status code + user data');
+        isSuccess = true;
+      }
+
+      if (!isSuccess) {
+        final msg = data['message'] ?? 'Registration failed - unexpected response format';
         print('❌ [SIGNUP] Registration failed: $msg');
+        print('   Full response: $data');
         throw Exception(msg);
       }
 
@@ -380,10 +400,10 @@ class UserRepository {
     // ✅ Enhanced role validation warning
     if (currentUser.role.isEmpty) {
       print('⚠️ [KYC] WARNING: User role is empty!');
-      print('   KYC may fail. Update user role in database to "delivery_partner"');
-    } else if (currentUser.role != 'delivery' && currentUser.role != 'delivery_partner') {
+      print('   KYC may fail. Update user role in database to "delivery"');
+    } else if (currentUser.role != 'delivery') {  // ✅ CHANGED - removed 'delivery_partner' check
       print('⚠️ [KYC] WARNING: Unexpected role: "${currentUser.role}"');
-      print('   Expected "delivery" or "delivery_partner"');
+      print('   Expected "delivery"');  // ✅ CHANGED message
     }
 
     // Validate User ID
