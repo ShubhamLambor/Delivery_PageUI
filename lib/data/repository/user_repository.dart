@@ -17,7 +17,7 @@ class UserRepository {
   UserRepository({
     this.loginUrl = "$baseUrl/login.php",
     this.registerUrl = "$baseUrl/register.php",
-    this.kycUrl = "$baseUrl/delivery_partners.php",
+    this.kycUrl = "$baseUrl/delivery_kyc.php",
   });
 
   void clearUser() {
