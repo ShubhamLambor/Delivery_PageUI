@@ -28,7 +28,7 @@ class KYCPopupDialog extends StatelessWidget {
                 child: Icon(
                     Icons.verified_user,
                     size: 48,
-                    color: Colors.orange[700]
+                    color: Colors.green
                 ),
               ),
               const SizedBox(height: 20),
@@ -103,7 +103,7 @@ class KYCPopupDialog extends StatelessWidget {
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange[700],
+                    backgroundColor: Colors.green,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)
                     ),

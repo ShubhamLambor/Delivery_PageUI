@@ -7,15 +7,16 @@ import 'package:provider/provider.dart';
 
 import 'home_controller.dart';
 import '../../screens/home/widgets/current_delivery_card.dart';
+import '../../screens/home/widgets/new_order_card.dart';
 import '../../models/delivery_model.dart';
 import 'widgets/upcoming_tile.dart';
 import '../auth/auth_controller.dart';
+import '../deliveries/deliveries_controller.dart';
 import '../map/osm_navigation_screen.dart';
 import '../chatbot/chatbot_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
-
   @override
   State<HomePage> createState() => _HomePageState();
 }
@@ -31,38 +32,185 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _requestLocationPermission() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) { if (mounted) _showLocationServiceDialog(); return; }
+    if (!serviceEnabled) {
+      if (mounted) _showLocationServiceDialog();
+      return;
+    }
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) { if (mounted) _showPermissionDeniedDialog(); return; }
+      if (permission == LocationPermission.denied) {
+        if (mounted) _showPermissionDeniedDialog();
+        return;
+      }
     }
-    if (permission == LocationPermission.deniedForever) { if (mounted) _showPermissionPermanentlyDeniedDialog(); return; }
+    if (permission == LocationPermission.deniedForever) {
+      if (mounted) _showPermissionPermanentlyDeniedDialog();
+      return;
+    }
   }
 
   void _showLocationServiceDialog() {
-    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Location Services Disabled'), content: const Text('Please enable location services.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))]));
+    showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+            title: const Text('Location Services Disabled'),
+            content: const Text('Please enable location services.'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK')
+              )
+            ]
+        )
+    );
   }
 
   void _showPermissionDeniedDialog() {
-    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Permission Required'), content: const Text('App needs location access.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () {Navigator.pop(context); _requestLocationPermission();}, child: const Text('Retry'))]));
+    showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+            title: const Text('Permission Required'),
+            content: const Text('App needs location access.'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel')
+              ),
+              TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    _requestLocationPermission();
+                  },
+                  child: const Text('Retry')
+              )
+            ]
+        )
+    );
   }
 
   void _showPermissionPermanentlyDeniedDialog() {
-    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Permission Denied'), content: const Text('Enable location in settings.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () {Geolocator.openAppSettings(); Navigator.pop(context);}, child: const Text('Settings'))]));
+    showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+            title: const Text('Permission Denied'),
+            content: const Text('Enable location in settings.'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel')
+              ),
+              TextButton(
+                  onPressed: () {
+                    Geolocator.openAppSettings();
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Settings')
+              )
+            ]
+        )
+    );
   }
 
   Future<void> _navigateToMess() async {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => const OSMNavigationScreen(destinationLat: 19.0760, destinationLng: 72.8777, destinationName: 'Shree Kitchen')));
+    Navigator.push(
+        context,
+        MaterialPageRoute(
+            builder: (context) => const OSMNavigationScreen(
+                destinationLat: 19.0760,
+                destinationLng: 72.8777,
+                destinationName: 'Shree Kitchen'
+            )
+        )
+    );
+  }
+
+  void _handleAcceptOrder(BuildContext context, String orderId) async {
+    final deliveriesController = context.read<DeliveriesController>();
+
+    final success = await deliveriesController.acceptOrder(orderId);
+
+    if (mounted) {
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Order accepted successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '❌ ${deliveriesController.errorMessage ?? "Failed to accept order"}'
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  void _handleRejectOrder(BuildContext context, String orderId) async {
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reject Order?'),
+        content: const Text('Are you sure you want to reject this order?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && mounted) {
+      final deliveriesController = context.read<DeliveriesController>();
+      final success = await deliveriesController.rejectOrder(orderId);
+
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Order rejected'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  '❌ ${deliveriesController.errorMessage ?? "Failed to reject order"}'
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final home = context.watch<HomeController>();
     final auth = context.watch<AuthController>();
+    final deliveriesController = context.watch<DeliveriesController>();
 
     final DeliveryModel? current = home.currentDelivery;
     final List<DeliveryModel> upcoming = home.upcomingDeliveries;
+    final List<DeliveryModel> newOrders = deliveriesController.newOrders;
 
     final completed = home.completedCount;
     final pending = home.pendingCount;
@@ -104,28 +252,50 @@ class _HomePageState extends State<HomePage> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Hello, $userName', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 4),
-                          Text(dateStr, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14)),
-                        ],
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Hello, $userName',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                                dateStr,
+                                style: TextStyle(
+                                    color: Colors.white.withOpacity(0.9),
+                                    fontSize: 14
+                                )
+                            ),
+                          ],
+                        ),
                       ),
                       Row(
                         children: [
-                          // 👇 CHAT BUTTON (NEW)
+                          // Chat Button
                           Container(
                             decoration: BoxDecoration(
                               color: Colors.white.withOpacity(0.2),
                               shape: BoxShape.circle,
                             ),
                             child: IconButton(
-                              icon: const Icon(Icons.support_agent, color: Colors.white, size: 26),
+                              icon: const Icon(
+                                  Icons.support_agent,
+                                  color: Colors.white,
+                                  size: 26
+                              ),
                               onPressed: () {
                                 Navigator.push(
                                   context,
-                                  MaterialPageRoute(builder: (context) => const ChatbotPage()),
+                                  MaterialPageRoute(
+                                      builder: (context) => const ChatbotPage()
+                                  ),
                                 );
                               },
                               tooltip: 'Support Assistant',
@@ -135,11 +305,17 @@ class _HomePageState extends State<HomePage> {
                           // Profile Icon
                           Container(
                             padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                            decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle
+                            ),
                             child: CircleAvatar(
                               radius: 20,
                               backgroundColor: Colors.white,
-                              child: Icon(Icons.person, color: isOnline ? Colors.green : Colors.red),
+                              child: Icon(
+                                  Icons.person,
+                                  color: isOnline ? Colors.green : Colors.red
+                              ),
                             ),
                           ),
                         ],
@@ -147,7 +323,10 @@ class _HomePageState extends State<HomePage> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  SwipeToggleButton(isOnline: isOnline, onToggle: home.toggleOnline),
+                  SwipeToggleButton(
+                      isOnline: isOnline,
+                      onToggle: home.toggleOnline
+                  ),
                 ],
               ),
             ),
@@ -165,10 +344,30 @@ class _HomePageState extends State<HomePage> {
                   childAspectRatio: 1.6,
                   physics: const NeverScrollableScrollPhysics(),
                   children: [
-                    _buildStatCard('Today\'s Earnings', '₹320', Icons.currency_rupee, Colors.orange),
-                    _buildStatCard('Completed', '$completed', Icons.check_circle, Colors.green),
-                    _buildStatCard('Pending', '$pending', Icons.access_time, Colors.blue),
-                    _buildStatCard('Cancelled', '$cancelled', Icons.cancel, Colors.red),
+                    _buildStatCard(
+                        'Today\'s Earnings',
+                        '₹320',
+                        Icons.currency_rupee,
+                        Colors.orange
+                    ),
+                    _buildStatCard(
+                        'Completed',
+                        '$completed',
+                        Icons.check_circle,
+                        Colors.green
+                    ),
+                    _buildStatCard(
+                        'Pending',
+                        '$pending',
+                        Icons.access_time,
+                        Colors.blue
+                    ),
+                    _buildStatCard(
+                        'Cancelled',
+                        '$cancelled',
+                        Icons.cancel,
+                        Colors.red
+                    ),
                   ],
                 ),
               ),
@@ -182,35 +381,119 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // NEW ORDERS SECTION (Priority Display)
+                    if (newOrders.isNotEmpty) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                              '🔔 New Orders',
+                              style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold
+                              )
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.orange,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '${newOrders.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      ...newOrders.map((order) {
+                        return NewOrderCard(
+                          order: order,
+                          onAccept: () => _handleAcceptOrder(context, order.id),
+                          onReject: () => _handleRejectOrder(context, order.id),
+                        );
+                      }).toList(),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // ACTIVE DELIVERY
                     if (current != null) ...[
-                      const Text('Active Delivery', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const Text(
+                          'Active Delivery',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold
+                          )
+                      ),
                       const SizedBox(height: 12),
                       CurrentDeliveryCard(delivery: current),
                       const SizedBox(height: 24),
                     ],
 
-                    const Text('Next Pickup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    // NEXT PICKUP
+                    const Text(
+                        'Next Pickup',
+                        style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold
+                        )
+                    ),
                     const SizedBox(height: 12),
                     _buildPickupCard(),
-
                     const SizedBox(height: 24),
 
+                    // UPCOMING ORDERS
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Upcoming Orders', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        const Text(
+                            'Upcoming Orders',
+                            style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold
+                            )
+                        ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                          child: Text('${upcoming.length}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4
+                          ),
+                          decoration: BoxDecoration(
+                              color: Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(12)
+                          ),
+                          child: Text(
+                            '${upcoming.length}',
+                            style: const TextStyle(
+                                color: Colors.green,
+                                fontWeight: FontWeight.bold
+                            ),
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
                     if (upcoming.isEmpty)
-                      Center(child: Padding(padding: const EdgeInsets.all(20), child: Text("No upcoming orders", style: TextStyle(color: Colors.grey[500]))))
+                      Center(
+                          child: Padding(
+                              padding: const EdgeInsets.all(20),
+                              child: Text(
+                                  "No upcoming orders",
+                                  style: TextStyle(color: Colors.grey[500])
+                              )
+                          )
+                      )
                     else
-                      Column(children: upcoming.map((d) => UpcomingTile(delivery: d)).toList()),
+                      Column(
+                          children: upcoming.map((d) => UpcomingTile(delivery: d)).toList()
+                      ),
 
                     const SizedBox(height: 100),
                   ],
@@ -223,13 +506,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(
+      String title,
+      String value,
+      IconData icon,
+      Color color
+      ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4)
+          )
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -237,13 +531,37 @@ class _HomePageState extends State<HomePage> {
         children: [
           Row(
             children: [
-              Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 18)),
+              Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                      color: color.withOpacity(0.1),
+                      shape: BoxShape.circle
+                  ),
+                  child: Icon(icon, color: color, size: 18)
+              ),
               const Spacer(),
-              Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text(
+                  value,
+                  style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold
+                  )
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500)),
+          Flexible(
+            child: Text(
+              title,
+              style: TextStyle(
+                  color: Colors.grey[600],
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );
@@ -257,33 +575,85 @@ class _HomePageState extends State<HomePage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.orange.shade100),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8
+          )
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.store, color: Colors.orange, size: 20)),
+              Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8)
+                  ),
+                  child: const Icon(
+                      Icons.store,
+                      color: Colors.orange,
+                      size: 20
+                  )
+              ),
               const SizedBox(width: 12),
               const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Shree Kitchen', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    Text('Pickup Point', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    Text(
+                        'Shree Kitchen',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16
+                        )
+                    ),
+                    Text(
+                        'Pickup Point',
+                        style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12
+                        )
+                    ),
                   ],
                 ),
               ),
-              Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(8)), child: const Text('25 Tiffins', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))),
+              Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4
+                  ),
+                  decoration: BoxDecoration(
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(8)
+                  ),
+                  child: const Text(
+                      '25 Tiffins',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12
+                      )
+                  )
+              ),
             ],
           ),
           const SizedBox(height: 16),
+          // ✅ FIXED: Wrapped the entire Row in proper constraints
           Row(
             children: [
               Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
               const SizedBox(width: 6),
-              const Text('10:15 - 10:45 AM', style: TextStyle(fontWeight: FontWeight.w500)),
+              Expanded(
+                child: Text(
+                  '10:15 - 10:45 AM',
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -297,7 +667,9 @@ class _HomePageState extends State<HomePage> {
                 backgroundColor: Colors.black,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)
+                ),
               ),
             ),
           ),
@@ -307,11 +679,15 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// --- SwipeToggleButton (unchanged) ---
+// --- SwipeToggleButton ---
 class SwipeToggleButton extends StatefulWidget {
   final bool isOnline;
   final VoidCallback onToggle;
-  const SwipeToggleButton({super.key, required this.isOnline, required this.onToggle});
+  const SwipeToggleButton({
+    super.key,
+    required this.isOnline,
+    required this.onToggle
+  });
   @override
   State<SwipeToggleButton> createState() => _SwipeToggleButtonState();
 }
@@ -319,6 +695,7 @@ class SwipeToggleButton extends StatefulWidget {
 class _SwipeToggleButtonState extends State<SwipeToggleButton> {
   double _dragPosition = 0.0;
   bool _isDragging = false;
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width - 40;
@@ -328,13 +705,130 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
     final targetPosition = widget.isOnline ? maxDrag : 0.0;
     final currentPosition = _isDragging ? _dragPosition : targetPosition;
     final double dragPercentage = (currentPosition / maxDrag).clamp(0.0, 1.0);
-    final Color backgroundColor = Color.lerp(Colors.red.shade400, Colors.green.shade600, dragPercentage)!;
+    final Color backgroundColor = Color.lerp(
+        Colors.red.shade400,
+        Colors.green.shade600,
+        dragPercentage
+    )!;
 
     return Container(
       height: height,
       width: screenWidth,
-      decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: backgroundColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))], border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5)),
-      child: Stack(children: [Row(children: [Expanded(child: Center(child: AnimatedOpacity(opacity: (!widget.isOnline && !_isDragging) ? 1.0 : 0.5, duration: const Duration(milliseconds: 200), child: const Text('Offline', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))))), Expanded(child: Center(child: AnimatedOpacity(opacity: (widget.isOnline && !_isDragging) ? 1.0 : 0.5, duration: const Duration(milliseconds: 200), child: const Text('Online', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)))))]), AnimatedPositioned(duration: _isDragging ? Duration.zero : const Duration(milliseconds: 300), curve: Curves.easeOutBack, left: currentPosition, top: 2, bottom: 2, child: GestureDetector(onHorizontalDragStart: (_) => setState(() { _isDragging = true; _dragPosition = targetPosition; }), onHorizontalDragUpdate: (d) => setState(() => _dragPosition = (_dragPosition + d.delta.dx).clamp(0.0, maxDrag)), onHorizontalDragEnd: (d) { setState(() => _isDragging = false); if ((_dragPosition > maxDrag / 2) != widget.isOnline) widget.onToggle(); }, onTap: widget.onToggle, child: Container(width: thumbWidth - 4, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(26), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2))]), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(widget.isOnline ? Icons.verified_user : Icons.power_settings_new, color: backgroundColor, size: 20), const SizedBox(width: 8), Text(widget.isOnline ? 'Online' : 'Offline', style: TextStyle(color: backgroundColor, fontWeight: FontWeight.bold, fontSize: 14))]))))]),
+      decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+                color: backgroundColor.withOpacity(0.4),
+                blurRadius: 10,
+                offset: const Offset(0, 4)
+            )
+          ],
+          border: Border.all(
+              color: Colors.white.withOpacity(0.3),
+              width: 1.5
+          )
+      ),
+      child: Stack(
+          children: [
+            Row(
+                children: [
+                  Expanded(
+                      child: Center(
+                          child: AnimatedOpacity(
+                              opacity: (!widget.isOnline && !_isDragging) ? 1.0 : 0.5,
+                              duration: const Duration(milliseconds: 200),
+                              child: const Text(
+                                  'Offline',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15
+                                  )
+                              )
+                          )
+                      )
+                  ),
+                  Expanded(
+                      child: Center(
+                          child: AnimatedOpacity(
+                              opacity: (widget.isOnline && !_isDragging) ? 1.0 : 0.5,
+                              duration: const Duration(milliseconds: 200),
+                              child: const Text(
+                                  'Online',
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15
+                                  )
+                              )
+                          )
+                      )
+                  )
+                ]
+            ),
+            AnimatedPositioned(
+                duration: _isDragging
+                    ? Duration.zero
+                    : const Duration(milliseconds: 300),
+                curve: Curves.easeOutBack,
+                left: currentPosition,
+                top: 2,
+                bottom: 2,
+                child: GestureDetector(
+                    onHorizontalDragStart: (_) => setState(() {
+                      _isDragging = true;
+                      _dragPosition = targetPosition;
+                    }),
+                    onHorizontalDragUpdate: (d) => setState(() {
+                      _dragPosition = (_dragPosition + d.delta.dx).clamp(0.0, maxDrag);
+                    }),
+                    onHorizontalDragEnd: (d) {
+                      setState(() => _isDragging = false);
+                      if ((_dragPosition > maxDrag / 2) != widget.isOnline) {
+                        widget.onToggle();
+                      }
+                    },
+                    onTap: widget.onToggle,
+                    child: Container(
+                        width: thumbWidth - 4,
+                        decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(26),
+                            boxShadow: [
+                              BoxShadow(
+                                  color: Colors.black.withOpacity(0.15),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2)
+                              )
+                            ]
+                        ),
+                        child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                  widget.isOnline
+                                      ? Icons.verified_user
+                                      : Icons.power_settings_new,
+                                  color: backgroundColor,
+                                  size: 20
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                  widget.isOnline ? 'Online' : 'Offline',
+                                  style: TextStyle(
+                                      color: backgroundColor,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14
+                                  )
+                              )
+                            ]
+                        )
+                    )
+                )
+            )
+          ]
+      ),
     );
   }
 }

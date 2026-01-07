@@ -1,3 +1,5 @@
+// lib/screens/chatbot/chatbot_page.dart
+
 import 'package:flutter/material.dart';
 import '../../services/chat_service.dart';
 
@@ -34,41 +36,52 @@ class _ChatbotPageState extends State<ChatbotPage> with SingleTickerProviderStat
     _checkServerStatus();
   }
 
+  // ✅ FIXED: Added mounted check
   Future<void> _checkServerStatus() async {
     final isOnline = await _chatService.checkServerHealth();
-    setState(() {
-      _serverOnline = isOnline;
-    });
-    if (!isOnline) {
-      _addBotMessage("⚠️ Server is offline. Please check your connection.");
+
+    if (mounted) {
+      setState(() {
+        _serverOnline = isOnline;
+      });
+
+      if (!isOnline) {
+        _addBotMessage("⚠️ Server is offline. Please check your connection.");
+      }
     }
   }
 
+  // ✅ FIXED: Added mounted check
   void _addBotMessage(String text) {
-    setState(() {
-      _messages.add(ChatMessage(
-        text: text,
-        isUser: false,
-        timestamp: DateTime.now(),
-      ));
-    });
-    _scrollToBottom();
+    if (mounted) {
+      setState(() {
+        _messages.add(ChatMessage(
+          text: text,
+          isUser: false,
+          timestamp: DateTime.now(),
+        ));
+      });
+      _scrollToBottom();
+    }
   }
 
+  // ✅ FIXED: Added mounted check
   void _addUserMessage(String text) {
-    setState(() {
-      _messages.add(ChatMessage(
-        text: text,
-        isUser: true,
-        timestamp: DateTime.now(),
-      ));
-    });
-    _scrollToBottom();
+    if (mounted) {
+      setState(() {
+        _messages.add(ChatMessage(
+          text: text,
+          isUser: true,
+          timestamp: DateTime.now(),
+        ));
+      });
+      _scrollToBottom();
+    }
   }
 
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 150), () {
-      if (_scrollController.hasClients) {
+      if (mounted && _scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
@@ -78,6 +91,7 @@ class _ChatbotPageState extends State<ChatbotPage> with SingleTickerProviderStat
     });
   }
 
+  // ✅ FIXED: Added mounted checks
   Future<void> _handleSend([String? predefinedMessage]) async {
     final message = predefinedMessage ?? _messageController.text.trim();
     if (message.isEmpty) return;
@@ -85,16 +99,20 @@ class _ChatbotPageState extends State<ChatbotPage> with SingleTickerProviderStat
     if (predefinedMessage == null) _messageController.clear();
     _addUserMessage(message);
 
-    setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() => _isLoading = true);
+    }
 
     final response = await _chatService.sendMessage(message);
 
-    setState(() => _isLoading = false);
+    if (mounted) {
+      setState(() => _isLoading = false);
 
-    if (response.isSuccess) {
-      _addBotMessage(response.message);
-    } else {
-      _addBotMessage("❌ ${response.message}");
+      if (response.isSuccess) {
+        _addBotMessage(response.message);
+      } else {
+        _addBotMessage("❌ ${response.message}");
+      }
     }
   }
 
@@ -120,10 +138,10 @@ class _ChatbotPageState extends State<ChatbotPage> with SingleTickerProviderStat
   Widget _buildHeader() {
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
+        gradient: const LinearGradient(
           colors: [
-            const Color(0xFF2E7D32),
-            const Color(0xFF66BB6A),
+            Color(0xFF2E7D32),
+            Color(0xFF66BB6A),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -433,7 +451,7 @@ class _ChatbotPageState extends State<ChatbotPage> with SingleTickerProviderStat
     );
   }
 
-  // 🔹 TYPING INDICATOR
+  // 🔹 TYPING INDICATOR - ✅ FIXED
   Widget _buildTypingIndicator() {
     return Padding(
       padding: const EdgeInsets.only(left: 58, bottom: 16, right: 16),
@@ -461,7 +479,10 @@ class _ChatbotPageState extends State<ChatbotPage> with SingleTickerProviderStat
                     );
                   },
                   onEnd: () {
-                    if (mounted && _isLoading) setState(() {});
+                    // ✅ FIXED: Added mounted check
+                    if (mounted && _isLoading) {
+                      setState(() {});
+                    }
                   },
                   child: Container(
                     margin: EdgeInsets.only(right: index < 2 ? 5 : 0),
@@ -667,10 +688,15 @@ class _ChatbotPageState extends State<ChatbotPage> with SingleTickerProviderStat
   }
 }
 
+// 🔹 MESSAGE MODEL
 class ChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
 
-  ChatMessage({required this.text, required this.isUser, required this.timestamp});
+  ChatMessage({
+    required this.text,
+    required this.isUser,
+    required this.timestamp,
+  });
 }

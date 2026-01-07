@@ -3,13 +3,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// --- Imports for your App Logic ---
 import '../auth/auth_controller.dart';
 import '../auth/login_page.dart';
 import '../kyc/kyc_popup_dialog.dart';
 import 'profile_controller.dart';
 
-// --- Import the Detail Pages ---
 import 'pages/profile_pages.dart';
 
 class ProfilePage extends StatelessWidget {
@@ -184,7 +182,7 @@ class ProfilePage extends StatelessWidget {
                         Container(
                           margin: const EdgeInsets.only(bottom: 24),
                           padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.orange.shade200)),
+                          decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.green.shade200)),
                           child: Row(
                             children: [
                               const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 32),
@@ -193,9 +191,9 @@ class ProfilePage extends StatelessWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text('KYC Pending', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                                    const Text('KYC Pending', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                                     const SizedBox(height: 4),
-                                    Text('Verify to unlock full access', style: TextStyle(fontSize: 12, color: Colors.orange.shade800)),
+                                    Text('Verify to unlock full access', style: TextStyle(fontSize: 12, color: Colors.green.shade800)),
                                   ],
                                 ),
                               ),
@@ -203,7 +201,7 @@ class ProfilePage extends StatelessWidget {
                                 onPressed: () {
                                   showDialog(context: context, builder: (ctx) => const KYCPopupDialog());
                                 },
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white, elevation: 0),
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, elevation: 0),
                                 child: const Text('Verify'),
                               )
                             ],
