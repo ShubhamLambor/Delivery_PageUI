@@ -7,56 +7,62 @@ import 'package:flutter/material.dart';
 class DeliveryService {
   static const String baseUrl = 'https://svtechshant.com/tiffin/api';
 
-  /// Accept an order
-  static Future<Map<String, dynamic>> acceptOrder({
+  /// Helper method for all status updates - Single unified endpoint
+  static Future<Map<String, dynamic>> _updateStatus({
+    required String action,
     required String orderId,
     required String deliveryPartnerId,
+    String? reason,
+    String? notes,
   }) async {
     try {
-      debugPrint('✅ Accepting order...');
-      debugPrint(' Order ID: $orderId');
-      debugPrint(' Partner ID: $deliveryPartnerId');
+      debugPrint('🔄 Updating order status...');
+      debugPrint('   Action: $action');
+      debugPrint('   Order ID: $orderId');
+      debugPrint('   Partner ID: $deliveryPartnerId');
+      if (reason != null) debugPrint('   Reason: $reason');
+      if (notes != null) debugPrint('   Notes: $notes');
 
       final response = await http.post(
-        Uri.parse('$baseUrl/delivery/accept_order.php'),
+        Uri.parse('$baseUrl/delivery/order_delivery_status.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
         },
         encoding: Encoding.getByName('utf-8'),
         body: {
+          'action': action,
           'order_id': orderId,
           'delivery_partner_id': deliveryPartnerId,
-          'status': 'accepted',
+          if (reason != null) 'reason': reason,
+          if (notes != null) 'notes': notes,
         },
       ).timeout(const Duration(seconds: 15));
 
-      debugPrint('📥 Accept Response Status: ${response.statusCode}');
-      debugPrint('📥 Accept Response Body: ${response.body}');
+      debugPrint('📥 Response Status: ${response.statusCode}');
+      debugPrint('📥 Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         try {
           final jsonData = jsonDecode(response.body);
 
-          if (jsonData['status'] == 'success' || jsonData['success'] == true) {
+          // Backend returns 'success' boolean field
+          if (jsonData['success'] == true) {
             return {
               'success': true,
-              'message': jsonData['message'] ?? 'Order accepted successfully',
+              'message': jsonData['message'] ?? 'Action completed successfully',
               'order_id': jsonData['order_id'] ?? orderId,
-              'delivery_partner_id': jsonData['delivery_partner_id'],
-              'accepted_at': jsonData['accepted_at'],
-              'debug_log': jsonData['debug_log'],
+              'action': action,
+              'data': jsonData['data'],
             };
           } else {
             return {
               'success': false,
-              'message': jsonData['message'] ?? 'Failed to accept order',
-              'debug_log': jsonData['debug_log'],
+              'message': jsonData['message'] ?? 'Action failed',
             };
           }
         } catch (e) {
           debugPrint('⚠️ JSON Parse Error: $e');
-          debugPrint('Raw Response: ${response.body}');
           return {
             'success': false,
             'message': 'Invalid server response',
@@ -77,90 +83,166 @@ class DeliveryService {
         'error': e.toString(),
       };
     } catch (e) {
-      debugPrint('❌ Accept Order Error: $e');
+      debugPrint('❌ API Error: $e');
       return {
         'success': false,
-        'message': 'Failed to accept order. Please try again.',
+        'message': 'Failed to complete action. Please try again.',
         'error': e.toString(),
       };
     }
   }
 
-  /// Reject an order
+  /// 1. Accept Order
+  static Future<Map<String, dynamic>> acceptOrder({
+    required String orderId,
+    required String deliveryPartnerId,
+  }) async {
+    debugPrint('✅ Accepting order...');
+    return _updateStatus(
+      action: 'accept',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+    );
+  }
+
+  /// 2. Reject Order
   static Future<Map<String, dynamic>> rejectOrder({
     required String orderId,
     required String deliveryPartnerId,
     String? reason,
   }) async {
+    debugPrint('❌ Rejecting order...');
+    return _updateStatus(
+      action: 'reject',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+      reason: reason ?? 'No reason provided',
+    );
+  }
+
+  /// 3. Mark Order as Picked Up
+  static Future<Map<String, dynamic>> markPickedUp({
+    required String orderId,
+    required String deliveryPartnerId,
+  }) async {
+    debugPrint('📦 Marking order as picked up...');
+    return _updateStatus(
+      action: 'picked_up',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+    );
+  }
+
+  /// 4. Mark Order as Delivered
+  static Future<Map<String, dynamic>> markDelivered({
+    required String orderId,
+    required String deliveryPartnerId,
+    String? notes,
+  }) async {
+    debugPrint('✅ Marking order as delivered...');
+    return _updateStatus(
+      action: 'delivered',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+      notes: notes,
+    );
+  }
+
+  /// 5. Mark Order as In Transit
+  static Future<Map<String, dynamic>> markInTransit({
+    required String orderId,
+    required String deliveryPartnerId,
+  }) async {
+    debugPrint('🚚 Marking order as in transit...');
+    return _updateStatus(
+      action: 'in_transit',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+    );
+  }
+
+  /// 6. Cancel Order
+  static Future<Map<String, dynamic>> cancelOrder({
+    required String orderId,
+    required String deliveryPartnerId,
+    String? reason,
+  }) async {
+    debugPrint('🚫 Canceling order...');
+    return _updateStatus(
+      action: 'cancelled',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+      reason: reason ?? 'Cancelled by delivery partner',
+    );
+  }
+
+  /// ✅ FIXED: Check for pending assignments for delivery partner
+  /// Backend returns: {success: true, has_pending: true, assignment: {...}}
+  static Future<Map<String, dynamic>> checkPendingAssignments(
+      String partnerId,
+      ) async {
     try {
-      debugPrint('❌ Rejecting order...');
-      debugPrint(' Order ID: $orderId');
-      debugPrint(' Partner ID: $deliveryPartnerId');
-      debugPrint(' Reason: ${reason ?? "Not provided"}');
+      debugPrint('🔍 Checking pending assignments for partner: $partnerId');
 
       final response = await http.post(
-        Uri.parse('$baseUrl/delivery/reject_order.php'),
+        Uri.parse('$baseUrl/delivery/get_pending_assignments.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
         },
         encoding: Encoding.getByName('utf-8'),
         body: {
-          'order_id': orderId,
-          'delivery_partner_id': deliveryPartnerId,
-          'reason': reason ?? 'Not available',
+          'delivery_partner_id': partnerId,
         },
-      ).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 10));
 
-      debugPrint('📥 Reject Response Status: ${response.statusCode}');
-      debugPrint('📥 Reject Response Body: ${response.body}');
+      debugPrint('📥 Pending Assignments Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         try {
           final jsonData = jsonDecode(response.body);
+          debugPrint('📥 Pending Assignments Data: $jsonData');
 
-          if (jsonData['status'] == 'success' || jsonData['success'] == true) {
+          if (jsonData['success'] == true) {
+            // ✅ FIXED: Return has_pending and assignment (singular)
             return {
               'success': true,
-              'message': jsonData['message'] ?? 'Order rejected',
-              'order_id': jsonData['order_id'] ?? orderId,
-              'rejected_at': jsonData['rejected_at'],
-              'debug_log': jsonData['debug_log'],
+              'has_pending': jsonData['has_pending'] ?? false,
+              'assignment': jsonData['assignment'],  // Single assignment object
+              'message': jsonData['message'],
             };
           } else {
             return {
               'success': false,
-              'message': jsonData['message'] ?? 'Failed to reject order',
-              'debug_log': jsonData['debug_log'],
+              'has_pending': false,
+              'assignment': null,
+              'message': jsonData['message'] ?? 'No pending assignments',
             };
           }
         } catch (e) {
           debugPrint('⚠️ JSON Parse Error: $e');
           return {
             'success': false,
+            'has_pending': false,
+            'assignment': null,
             'message': 'Invalid server response',
-            'raw_response': response.body,
           };
         }
       } else {
         return {
           'success': false,
+          'has_pending': false,
+          'assignment': null,
           'message': 'Server error: ${response.statusCode}',
         };
       }
-    } on http.ClientException catch (e) {
-      debugPrint('❌ Network Error: $e');
-      return {
-        'success': false,
-        'message': 'Network error. Check your internet connection.',
-        'error': e.toString(),
-      };
     } catch (e) {
-      debugPrint('❌ Reject Order Error: $e');
+      debugPrint('❌ Check Pending Assignments Error: $e');
       return {
         'success': false,
-        'message': 'Failed to reject order. Please try again.',
-        'error': e.toString(),
+        'has_pending': false,
+        'assignment': null,
+        'message': 'Failed to check pending assignments',
       };
     }
   }
@@ -233,76 +315,6 @@ class DeliveryService {
     }
   }
 
-  /// Update order status (picked up, delivered, etc.)
-  static Future<Map<String, dynamic>> updateOrderStatus({
-    required String orderId,
-    required String deliveryPartnerId,
-    required String status, // 'picked_up', 'in_transit', 'delivered', 'cancelled'
-    String? notes,
-  }) async {
-    try {
-      debugPrint('🔄 Updating order status...');
-      debugPrint(' Order ID: $orderId');
-      debugPrint(' New Status: $status');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/delivery/update_order_status.php'),
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Accept': 'application/json',
-        },
-        encoding: Encoding.getByName('utf-8'),
-        body: {
-          'order_id': orderId,
-          'delivery_partner_id': deliveryPartnerId,
-          'status': status,
-          'notes': notes ?? '',
-        },
-      ).timeout(const Duration(seconds: 15));
-
-      debugPrint('📥 Status Update Response: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        try {
-          final jsonData = jsonDecode(response.body);
-
-          if (jsonData['status'] == 'success' || jsonData['success'] == true) {
-            return {
-              'success': true,
-              'message': jsonData['message'] ?? 'Status updated successfully',
-              'order_id': jsonData['order_id'],
-              'status': jsonData['new_status'] ?? status,
-              'updated_at': jsonData['updated_at'],
-            };
-          } else {
-            return {
-              'success': false,
-              'message': jsonData['message'] ?? 'Failed to update status',
-            };
-          }
-        } catch (e) {
-          debugPrint('⚠️ JSON Parse Error: $e');
-          return {
-            'success': false,
-            'message': 'Invalid server response',
-          };
-        }
-      } else {
-        return {
-          'success': false,
-          'message': 'Server error: ${response.statusCode}',
-        };
-      }
-    } catch (e) {
-      debugPrint('❌ Update Status Error: $e');
-      return {
-        'success': false,
-        'message': 'Failed to update status',
-        'error': e.toString(),
-      };
-    }
-  }
-
   /// Get delivery partner's active orders
   static Future<Map<String, dynamic>> getActiveOrders({
     required String deliveryPartnerId,
@@ -327,11 +339,90 @@ class DeliveryService {
       if (response.statusCode == 200) {
         try {
           final jsonData = jsonDecode(response.body);
+
+          if (jsonData['status'] == 'success' || jsonData['success'] == true) {
+            return {
+              'success': true,
+              'orders': jsonData['orders'] ?? [],
+              'count': jsonData['count'] ?? 0,
+            };
+          } else {
+            return {
+              'success': false,
+              'message': jsonData['message'] ?? 'No active orders',
+              'orders': [],
+              'count': 0,
+            };
+          }
+        } catch (e) {
           return {
-            'success': true,
-            'orders': jsonData['orders'] ?? [],
-            'count': jsonData['count'] ?? 0,
+            'success': false,
+            'message': 'Invalid response',
+            'orders': [],
+            'count': 0,
           };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': 'Server error: ${response.statusCode}',
+          'orders': [],
+          'count': 0,
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Get Active Orders Error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to fetch active orders',
+        'orders': [],
+        'count': 0,
+      };
+    }
+  }
+
+  /// Get order history for delivery partner
+  static Future<Map<String, dynamic>> getOrderHistory({
+    required String deliveryPartnerId,
+    int? limit,
+  }) async {
+    try {
+      debugPrint('📜 Fetching order history for partner: $deliveryPartnerId');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/delivery/get_order_history.php'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        encoding: Encoding.getByName('utf-8'),
+        body: {
+          'delivery_partner_id': deliveryPartnerId,
+          if (limit != null) 'limit': limit.toString(),
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      debugPrint('📥 Order History Response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        try {
+          final jsonData = jsonDecode(response.body);
+
+          if (jsonData['success'] == true) {
+            return {
+              'success': true,
+              'orders': jsonData['orders'] ?? [],
+              'count': jsonData['count'] ?? 0,
+              'total_earnings': jsonData['total_earnings'] ?? 0.0,
+            };
+          } else {
+            return {
+              'success': false,
+              'message': jsonData['message'] ?? 'No order history',
+              'orders': [],
+              'count': 0,
+            };
+          }
         } catch (e) {
           return {
             'success': false,
@@ -349,12 +440,72 @@ class DeliveryService {
         };
       }
     } catch (e) {
-      debugPrint('❌ Get Active Orders Error: $e');
+      debugPrint('❌ Get Order History Error: $e');
       return {
         'success': false,
-        'message': 'Failed to fetch active orders',
+        'message': 'Failed to fetch order history',
         'orders': [],
         'count': 0,
+      };
+    }
+  }
+
+  /// Get delivery partner stats
+  static Future<Map<String, dynamic>> getPartnerStats({
+    required String deliveryPartnerId,
+  }) async {
+    try {
+      debugPrint('📊 Fetching partner stats: $deliveryPartnerId');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/delivery/get_partner_stats.php'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        encoding: Encoding.getByName('utf-8'),
+        body: {
+          'delivery_partner_id': deliveryPartnerId,
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      debugPrint('📥 Partner Stats Response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        try {
+          final jsonData = jsonDecode(response.body);
+
+          if (jsonData['success'] == true) {
+            return {
+              'success': true,
+              'stats': jsonData['stats'] ?? {},
+              'total_deliveries': jsonData['total_deliveries'] ?? 0,
+              'total_earnings': jsonData['total_earnings'] ?? 0.0,
+              'rating': jsonData['rating'] ?? 0.0,
+            };
+          } else {
+            return {
+              'success': false,
+              'message': jsonData['message'] ?? 'No stats available',
+            };
+          }
+        } catch (e) {
+          return {
+            'success': false,
+            'message': 'Invalid response',
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': 'Server error',
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Get Partner Stats Error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to fetch partner stats',
       };
     }
   }

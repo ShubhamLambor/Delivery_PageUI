@@ -7,6 +7,8 @@ import '../../map/osm_navigation_screen.dart';
 class CurrentDeliveryCard extends StatelessWidget {
   final DeliveryModel delivery;
   final VoidCallback? onCall;
+  final VoidCallback? onPickedUp;
+  final VoidCallback? onInTransit;
   final VoidCallback? onDelivered;
   final VoidCallback? onCancel;
 
@@ -14,6 +16,8 @@ class CurrentDeliveryCard extends StatelessWidget {
     super.key,
     required this.delivery,
     this.onCall,
+    this.onPickedUp,
+    this.onInTransit,
     this.onDelivered,
     this.onCancel,
   });
@@ -23,8 +27,8 @@ class CurrentDeliveryCard extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => OSMNavigationScreen(
-          destinationLat: delivery.latitude,
-          destinationLng: delivery.longitude,
+          destinationLat: delivery.latitude!,
+          destinationLng: delivery.longitude!,
           destinationName: delivery.customerName,
         ),
       ),
@@ -50,178 +54,409 @@ class CurrentDeliveryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Row (Name + Explicit Navigate Button)
+          /// --- Header: Order ID + Status Badge ---
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Order ID & Customer Name
               Expanded(
-                child: Text(
-                  delivery.customerName,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF2E7D32),
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Order ${delivery.id}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2E7D32),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      delivery.customerName,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[700],
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 8),
 
-              // --- CHANGED: Explicit Navigate Button ---
-              InkWell(
-                onTap: () => _handleNavigation(context),
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
-                  ),
-                  child: Row(
-                    children: const [
-                      Icon(Icons.near_me, color: Colors.blue, size: 16), // Use "near_me" or "navigation"
-                      SizedBox(width: 4),
-                      Text(
-                        "Map",
-                        style: TextStyle(
-                            color: Colors.blue,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 8),
-
-          // Address Row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.location_on, size: 16, color: Colors.grey),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  delivery.address,
-                  style: TextStyle(color: Colors.grey[700], fontSize: 13),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              // Status Badge
+              _buildStatusBadge(delivery.status),
             ],
           ),
 
           const SizedBox(height: 12),
-
-          // Details Row (ETA + Item)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade200),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _detailItem(Icons.access_time, 'ETA: ${delivery.eta}', Colors.orange),
-                Container(width: 1, height: 16, color: Colors.grey.shade300), // Divider
-                _detailItem(Icons.inventory_2_outlined, delivery.item, Colors.green),
-              ],
-            ),
-          ),
-
+          const Divider(height: 1),
           const SizedBox(height: 12),
 
-          // Action Buttons Row (Combined)
-          Row(
-            children: [
-              // Call Button (Small)
-              InkWell(
-                onTap: onCall,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  height: 42,
-                  width: 42,
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green.withOpacity(0.3)),
-                  ),
-                  child: const Icon(Icons.call, color: Colors.green, size: 20),
-                ),
-              ),
-              const SizedBox(width: 10),
+          /// --- Mess/Restaurant Info ---
+          _buildInfoRow(
+            Icons.restaurant,
+            'Mess',
+            delivery.item, // This should be mess name from backend
+            Colors.orange,
+          ),
+          const SizedBox(height: 10),
 
-              // Slide-to-complete style Button (Primary)
-              Expanded(
-                child: _primaryButton(
-                  label: 'Mark Delivered',
-                  color: const Color(0xFF2FA84F),
-                  icon: Icons.check_circle_outline,
-                  onTap: onDelivered,
-                ),
-              ),
-            ],
+          /// --- Delivery Address ---
+          _buildInfoRow(
+            Icons.location_on,
+            'Delivery Address',
+            delivery.address,
+            Colors.red,
+          ),
+          const SizedBox(height: 10),
+
+          /// --- Amount ---
+          _buildInfoRow(
+            Icons.currency_rupee,
+            'Amount',
+            '₹${delivery.amount}',
+            Colors.green,
+          ),
+
+          const SizedBox(height: 16),
+          const Divider(height: 1),
+          const SizedBox(height: 16),
+
+          /// --- Action Buttons Based on Status ---
+          _buildActionButtons(context, delivery.status),
+        ],
+      ),
+    );
+  }
+
+  /// Build Status Badge
+  Widget _buildStatusBadge(String status) {
+    Color bgColor;
+    Color textColor;
+    String displayText;
+    IconData icon;
+
+    switch (status.toLowerCase()) {
+      case 'accepted':
+      case 'pending':
+        bgColor = Colors.blue.shade50;
+        textColor = Colors.blue.shade700;
+        displayText = 'Accepted';
+        icon = Icons.check_circle_outline;
+        break;
+      case 'picked_up':
+        bgColor = Colors.orange.shade50;
+        textColor = Colors.orange.shade700;
+        displayText = 'Picked Up';
+        icon = Icons.inventory_2_outlined;
+        break;
+      case 'in_transit':
+        bgColor = Colors.purple.shade50;
+        textColor = Colors.purple.shade700;
+        displayText = 'In Transit';
+        icon = Icons.local_shipping_outlined;
+        break;
+      case 'delivered':
+        bgColor = Colors.green.shade50;
+        textColor = Colors.green.shade700;
+        displayText = 'Delivered';
+        icon = Icons.check_circle;
+        break;
+      default:
+        bgColor = Colors.grey.shade100;
+        textColor = Colors.grey.shade700;
+        displayText = status;
+        icon = Icons.info_outline;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: textColor),
+          const SizedBox(width: 4),
+          Text(
+            displayText,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _detailItem(IconData icon, String text, Color color) {
+  /// Build Info Row
+  Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: color),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey[800]),
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 18, color: color),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
-  Widget _primaryButton({
-    required String label,
-    required Color color,
-    required IconData icon,
-    VoidCallback? onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        height: 42,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(color: color.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3)),
-          ],
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+  /// Build Action Buttons Based on Order Status
+  Widget _buildActionButtons(BuildContext context, String status) {
+    switch (status.toLowerCase()) {
+      case 'accepted':
+      case 'pending':
+        return _buildAcceptedActions(context);
+
+      case 'picked_up':
+        return _buildPickedUpActions(context);
+
+      case 'in_transit':
+        return _buildInTransitActions(context);
+
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  /// Actions when order is "Accepted" (need to pick up)
+  Widget _buildAcceptedActions(BuildContext context) {
+    return Column(
+      children: [
+        // Navigate + Call Row
+        Row(
           children: [
-            Icon(icon, color: Colors.white, size: 18),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
+            // Navigate to Mess Button
+            Expanded(
+              flex: 2,
+              child: ElevatedButton.icon(
+                onPressed: () => _handleNavigation(context),
+                icon: const Icon(Icons.navigation, size: 18),
+                label: const Text('Navigate to Mess'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // Call Button
+            Container(
+              height: 44,
+              width: 44,
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.withOpacity(0.3)),
+              ),
+              child: IconButton(
+                onPressed: onCall,
+                icon: const Icon(Icons.call, color: Colors.green, size: 20),
+                padding: EdgeInsets.zero,
               ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 10),
+
+        // Mark Picked Up Button
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: onPickedUp,
+            icon: const Icon(Icons.inventory_2, size: 20),
+            label: const Text('Mark as Picked Up'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Actions when order is "Picked Up" (on the way)
+  Widget _buildPickedUpActions(BuildContext context) {
+    return Column(
+      children: [
+        // Navigate + Call Row
+        Row(
+          children: [
+            // Navigate to Customer Button
+            Expanded(
+              flex: 2,
+              child: ElevatedButton.icon(
+                onPressed: () => _handleNavigation(context),
+                icon: const Icon(Icons.directions, size: 18),
+                label: const Text('Navigate to Customer'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // Call Button
+            Container(
+              height: 44,
+              width: 44,
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.withOpacity(0.3)),
+              ),
+              child: IconButton(
+                onPressed: onCall,
+                icon: const Icon(Icons.call, color: Colors.green, size: 20),
+                padding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // Mark In Transit Button
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: onInTransit,
+            icon: const Icon(Icons.local_shipping, size: 20),
+            label: const Text('Mark as In Transit'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Actions when order is "In Transit" (delivering)
+  Widget _buildInTransitActions(BuildContext context) {
+    return Column(
+      children: [
+        // Navigate + Call Row
+        Row(
+          children: [
+            // Navigate to Customer Button
+            Expanded(
+              flex: 2,
+              child: ElevatedButton.icon(
+                onPressed: () => _handleNavigation(context),
+                icon: const Icon(Icons.directions, size: 18),
+                label: const Text('Navigate to Customer'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+
+            // Call Button
+            Container(
+              height: 44,
+              width: 44,
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.green.withOpacity(0.3)),
+              ),
+              child: IconButton(
+                onPressed: onCall,
+                icon: const Icon(Icons.call, color: Colors.green, size: 20),
+                padding: EdgeInsets.zero,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        // Mark Delivered Button (Primary Action)
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: onDelivered,
+            icon: const Icon(Icons.check_circle, size: 22),
+            label: const Text('Mark as Delivered'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2FA84F),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              elevation: 3,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

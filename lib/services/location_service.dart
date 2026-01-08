@@ -1,51 +1,57 @@
 // lib/services/location_service.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'dart:async';
 import 'api_service.dart';
 
 class LocationService {
   Timer? _locationTimer;
   bool _isTracking = false;
+  String? _currentPartnerId;
 
   bool get isTracking => _isTracking;
 
-  /// Start tracking location (call when user goes online)
-  void startLocationTracking({
-    required String partnerId,
-    required Function(String) onError,
-  }) {
-    if (_isTracking) {
-      debugPrint('⚠️ Location tracking already active');
+  /// Start tracking location and sending updates every 30 seconds
+  void startLocationTracking(
+      String partnerId, {
+        Function(String)? onError,
+      }) {
+    if (_isTracking && _currentPartnerId == partnerId) {
+      debugPrint('⚠️ Location tracking already active for: $partnerId');
       return;
     }
 
+    _currentPartnerId = partnerId;
     _isTracking = true;
+
+    debugPrint('🌍 Starting location tracking...');
     debugPrint('🌍 Started location tracking for partner: $partnerId');
 
-    // Send immediate location update
-    _sendLocationUpdate(partnerId, onError);
+    // Send location immediately
+    _updateLocation(partnerId, onError);
 
-    // Update location every 30 seconds
-    _locationTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      _sendLocationUpdate(partnerId, onError);
-    });
+    // Then send every 30 seconds
+    _locationTimer = Timer.periodic(
+      const Duration(seconds: 30),
+          (_) => _updateLocation(partnerId, onError),
+    );
   }
 
-  /// Stop tracking location (call when user goes offline)
+  /// Stop location tracking
   void stopLocationTracking() {
     if (_locationTimer != null) {
       _locationTimer!.cancel();
       _locationTimer = null;
       _isTracking = false;
-      debugPrint('🛑 Stopped location tracking');
+      _currentPartnerId = null;
+      debugPrint('🛑 Location tracking stopped');
     }
   }
 
-  /// Send location update to backend
-  Future<void> _sendLocationUpdate(
+  /// Get current location and send to backend
+  Future<void> _updateLocation(
       String partnerId,
-      Function(String) onError,
+      Function(String)? onError,
       ) async {
     try {
       // Check location permission
@@ -53,44 +59,43 @@ class LocationService {
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         debugPrint('⚠️ Location permission denied');
-        onError('Location permission required');
+        onError?.call('Location permission denied');
         return;
       }
 
       // Get current position
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
       );
 
       debugPrint('📍 Got location: ${position.latitude}, ${position.longitude}');
 
       // Send to backend
+      debugPrint('📍 Updating location...');
+      debugPrint('   Partner ID: $partnerId');
+      debugPrint('   Lat: ${position.latitude}, Lng: ${position.longitude}');
+
       final result = await ApiService.updateLocation(
         partnerId: partnerId,
         latitude: position.latitude,
         longitude: position.longitude,
       );
 
-      if (result['success'] != true) {
-        debugPrint('⚠️ Location update failed: ${result['message']}');
+      debugPrint('📥 Location Response Status: ${result['status']}');
 
-        // If user went offline, stop tracking
-        if (result['is_online'] == 0 || result['is_online'] == false) {
-          debugPrint('🛑 User is offline, stopping location tracking');
-          stopLocationTracking();
-        }
+      if (result['status'] == 200 || result['success'] == true) {
+        debugPrint('✅ Location updated successfully');
+      } else {
+        debugPrint('⚠️ Location update failed: ${result['message']}');
+        onError?.call(result['message'] ?? 'Failed to update location');
       }
     } catch (e) {
-      debugPrint('❌ Location update error: $e');
-      // Don't stop tracking on temporary errors
-      if (e is TimeoutException) {
-        debugPrint('⏱️ Location timeout, will retry next cycle');
-      }
+      debugPrint('❌ Error updating location: $e');
+      onError?.call('Error: $e');
     }
   }
 
-  /// Dispose method to clean up
+  /// Dispose and cleanup
   void dispose() {
     stopLocationTracking();
   }

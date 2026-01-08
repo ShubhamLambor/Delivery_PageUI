@@ -14,6 +14,8 @@ class DummyData {
       latitude: 19.1334,
       longitude: 72.9133,
       eta: '12 mins',
+      amount: '99',           // ✅ ADDED
+      time: '12:30 PM',       // ✅ ADDED
       status: 'Pending',
     ),
     DeliveryModel(
@@ -24,6 +26,8 @@ class DummyData {
       latitude: 19.1340,
       longitude: 72.9140,
       eta: '20 mins',
+      amount: '120',          // ✅ ADDED
+      time: '1:00 PM',        // ✅ ADDED
       status: 'Pending',
     ),
     DeliveryModel(
@@ -34,6 +38,8 @@ class DummyData {
       latitude: 19.1320,
       longitude: 72.9120,
       eta: '25 mins',
+      amount: '150',          // ✅ ADDED
+      time: '7:30 PM',        // ✅ ADDED
       status: 'Pending',
     ),
     DeliveryModel(
@@ -44,6 +50,8 @@ class DummyData {
       latitude: 19.1350,
       longitude: 72.9150,
       eta: 'Delivered',
+      amount: '99',           // ✅ ADDED
+      time: '12:00 PM',       // ✅ ADDED
       status: 'Completed',
     ),
   ];
@@ -72,6 +80,6 @@ class DummyData {
     email: "delivery@example.com",
     phone: "9876543210",
     profilePic: "https://cdn-icons-png.flaticon.com/512/3177/3177440.png",
-    role: "delivery",  // ✅ ADDED this line
+    role: "delivery",
   );
 }

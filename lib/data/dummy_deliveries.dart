@@ -1,3 +1,5 @@
+// lib/data/dummy_deliveries.dart
+
 import '../models/delivery_model.dart';
 
 final List<DeliveryModel> dummyDeliveries = [
@@ -9,6 +11,8 @@ final List<DeliveryModel> dummyDeliveries = [
     latitude: 19.1334,
     longitude: 72.9133,
     eta: '12 mins',
+    amount: '99',           // ✅ ADDED
+    time: '12:30 PM',       // ✅ ADDED
     status: 'Pending',
   ),
   DeliveryModel(
@@ -19,6 +23,8 @@ final List<DeliveryModel> dummyDeliveries = [
     latitude: 19.1340,
     longitude: 72.9140,
     eta: '20 mins',
+    amount: '120',          // ✅ ADDED
+    time: '1:00 PM',        // ✅ ADDED
     status: 'Pending',
   ),
   DeliveryModel(
@@ -29,6 +35,8 @@ final List<DeliveryModel> dummyDeliveries = [
     latitude: 19.1320,
     longitude: 72.9120,
     eta: '25 mins',
+    amount: '150',          // ✅ ADDED
+    time: '7:30 PM',        // ✅ ADDED
     status: 'Pending',
   ),
   DeliveryModel(
@@ -39,6 +47,8 @@ final List<DeliveryModel> dummyDeliveries = [
     latitude: 19.1350,
     longitude: 72.9150,
     eta: 'Delivered',
+    amount: '99',           // ✅ ADDED
+    time: '12:00 PM',       // ✅ ADDED
     status: 'Completed',
   ),
   DeliveryModel(
@@ -49,6 +59,8 @@ final List<DeliveryModel> dummyDeliveries = [
     latitude: 19.1325,
     longitude: 72.9125,
     eta: 'Delivered',
+    amount: '99',           // ✅ ADDED
+    time: '1:15 PM',        // ✅ ADDED
     status: 'Completed',
   ),
   DeliveryModel(
@@ -59,6 +71,8 @@ final List<DeliveryModel> dummyDeliveries = [
     latitude: 19.1345,
     longitude: 72.9145,
     eta: 'Cancelled',
+    amount: '120',          // ✅ ADDED
+    time: '8:00 PM',        // ✅ ADDED
     status: 'Cancelled',
   ),
 ];

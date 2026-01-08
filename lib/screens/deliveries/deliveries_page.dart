@@ -1,6 +1,5 @@
 // lib/screens/deliveries/deliveries_page.dart
 
-import 'package:deliveryui/screens/deliveries/widgets/delivery_filter.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -261,7 +260,15 @@ class DeliveriesPage extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    Text('₹${delivery.amount.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
+                    Text(
+                      '₹${delivery.amount}',  // amount is already a String
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[800],
+                      ),
+                    ),
+
                   ],
                 ),
                 const SizedBox(height: 12),

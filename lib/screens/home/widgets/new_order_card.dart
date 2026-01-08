@@ -75,9 +75,9 @@ class NewOrderCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '₹${order.amount.toStringAsFixed(0)}',
+                      '₹${double.tryParse(order.amount)?.toStringAsFixed(2) ?? order.amount}',
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Colors.green,
                       ),
