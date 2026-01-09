@@ -3,6 +3,7 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../models/delivery_model.dart';
 
 class DeliveryService {
   static const String baseUrl = 'https://svtechshant.com/tiffin/api';
@@ -89,6 +90,63 @@ class DeliveryService {
         'message': 'Failed to complete action. Please try again.',
         'error': e.toString(),
       };
+    }
+  }
+
+  /// ✅ NEW: Get active deliveries for delivery partner (Returns List<DeliveryModel>)
+  static Future<List<DeliveryModel>> getActiveDeliveries(String partnerId) async {
+    try {
+      debugPrint('📋 Fetching active deliveries for partner: $partnerId');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/delivery/get_active_orders.php'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        encoding: Encoding.getByName('utf-8'),
+        body: {
+          'delivery_partner_id': partnerId,
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      debugPrint('📥 Active Deliveries Response Status: ${response.statusCode}');
+      debugPrint('📥 Active Deliveries Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        try {
+          final jsonData = jsonDecode(response.body);
+          debugPrint('📥 Active Deliveries Parsed Data: $jsonData');
+
+          if (jsonData['success'] == true || jsonData['status'] == 'success') {
+            final List<dynamic> ordersJson = jsonData['orders'] ?? [];
+
+            debugPrint('📦 Found ${ordersJson.length} orders in response');
+
+            // Convert JSON to List<DeliveryModel>
+            final List<DeliveryModel> deliveries = ordersJson.map((orderJson) {
+              debugPrint('   📋 Parsing order: ${orderJson['order_id']} - Status: ${orderJson['status']}');
+              return DeliveryModel.fromJson(orderJson);
+            }).toList();
+
+            debugPrint('✅ Fetched ${deliveries.length} active deliveries');
+            return deliveries;
+          } else {
+            debugPrint('ℹ️ No active deliveries: ${jsonData['message']}');
+            return [];
+          }
+        } catch (e) {
+          debugPrint('⚠️ JSON Parse Error: $e');
+          debugPrint('   Raw response: ${response.body}');
+          return [];
+        }
+      } else {
+        debugPrint('❌ Server Error: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      debugPrint('❌ Get Active Deliveries Error: $e');
+      return [];
     }
   }
 
@@ -208,7 +266,7 @@ class DeliveryService {
             return {
               'success': true,
               'has_pending': jsonData['has_pending'] ?? false,
-              'assignment': jsonData['assignment'],  // Single assignment object
+              'assignment': jsonData['assignment'], // Single assignment object
               'message': jsonData['message'],
             };
           } else {

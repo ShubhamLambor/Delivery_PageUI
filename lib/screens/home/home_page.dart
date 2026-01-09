@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
 import 'home_controller.dart';
 import '../../screens/home/widgets/current_delivery_card.dart';
 import '../../screens/home/widgets/new_order_card.dart';
@@ -32,20 +33,27 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _requestLocationPermission();
 
-      // Add delay to ensure AuthController is ready
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (mounted) {
-          // ✅ FIXED: Removed duplicate fetchDeliveries() call
-          debugPrint('🚀 Initializing HomePage...');
+      // ✅ Get partner ID from AuthController
+      final auth = context.read<AuthController>();
+      final partnerId = auth.user?.id;
 
-          // ✅ ONLY START POLLING
-          _startPolling();
-        }
+      if (partnerId == null || partnerId.isEmpty) {
+        debugPrint('❌ Cannot initialize: User ID is null');
+        return;
+      }
+
+      // ✅ Initialize HomeController with partner ID
+      final home = context.read<HomeController>();
+      home.initialize(partnerId).then((_) {
+        debugPrint('✅ HomeController initialized');
+
+        // Start polling after initialization
+        _startPolling();
       });
     });
   }
 
-  /// ✅ FIXED: Start polling for pending assignments every 5 seconds
+  // FIXED: Start polling for pending assignments every 5 seconds
   void _startPolling() {
     final auth = context.read<AuthController>();
     final uid = auth.user?.id;
@@ -61,26 +69,25 @@ class _HomePageState extends State<HomePage> {
       final home = context.read<HomeController>();
 
       if (!home.isOnline) {
-        return; // ✅ Silently skip when offline
+        return; // Silently skip when offline
       }
 
       try {
-        // ✅ FIXED: Removed excessive debug logs
+        // FIXED: Removed excessive debug logs
         final result = await DeliveryService.checkPendingAssignments(uid);
 
-        // ✅ FIXED: Proper condition check
+        // FIXED: Proper condition check
         final assignment = result['assignment'];
 
         if (result['success'] == true &&
             result['has_pending'] == true &&
             assignment != null &&
             assignment is Map<String, dynamic>) {
-
-          // ✅ ONLY LOG WHEN ORDER IS FOUND
-          debugPrint('🔔 🔔 🔔 NEW ORDER DETECTED! 🔔 🔔 🔔');
+          // ONLY LOG WHEN ORDER IS FOUND
+          debugPrint('🔔 NEW ORDER DETECTED!');
           debugPrint('   Order ID: ${assignment['order_id']}');
           debugPrint('   Mess: ${assignment['mess_name']}');
-          debugPrint('   Amount: ₹${assignment['total_amount']}');
+          debugPrint('   Amount: ${assignment['total_amount']}');
           debugPrint('   Address: ${assignment['delivery_address']}');
 
           // Stop polling while dialog is open
@@ -91,19 +98,19 @@ class _HomePageState extends State<HomePage> {
             _showNewOrderDialog(assignment);
           }
         }
-        // ✅ FIXED: Removed "No pending assignments" spam log
+        // FIXED: Removed "No pending assignments" spam log
       } catch (e) {
         debugPrint('❌ Polling error: $e');
       }
     });
   }
 
-  /// Stop polling timer
+  // Stop polling timer
   void _stopPolling() {
     if (_pollingTimer != null) {
       _pollingTimer!.cancel();
       _pollingTimer = null;
-      debugPrint('⏹️ Stopped order polling');
+      debugPrint('🛑 Stopped order polling');
     }
   }
 
@@ -112,7 +119,7 @@ class _HomePageState extends State<HomePage> {
     final auth = context.read<AuthController>();
     final uid = auth.user?.id ?? '';
 
-    debugPrint('📱 SHOWING DIALOG NOW...');
+    debugPrint('📋 SHOWING DIALOG NOW...');
 
     showDialog(
       context: context,
@@ -136,7 +143,7 @@ class _HomePageState extends State<HomePage> {
                   Icon(Icons.notifications_active, color: Colors.white),
                   SizedBox(width: 8),
                   Text(
-                    '🔔 NEW ORDER',
+                    'NEW ORDER',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -146,6 +153,7 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
+
             const SizedBox(height: 20),
 
             // Order Details
@@ -172,6 +180,7 @@ class _HomePageState extends State<HomePage> {
               'Amount',
               '₹${assignment['total_amount']?.toString() ?? '0'}',
             ),
+
             const SizedBox(height: 24),
 
             // Action Buttons
@@ -200,13 +209,15 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(width: 12),
-
                 // Accept Button
                 Expanded(
                   flex: 2,
                   child: ElevatedButton.icon(
                     onPressed: () async {
+                      // ✅ Close dialog FIRST
                       Navigator.pop(ctx);
+
+                      // ✅ Then accept the order
                       await _handleAcceptFromDialog(
                         assignment['order_id']?.toString() ?? '',
                         uid,
@@ -274,31 +285,89 @@ class _HomePageState extends State<HomePage> {
     debugPrint('✅ Accepting order from dialog: $orderId');
 
     try {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+                SizedBox(width: 16),
+                Text('Accepting order...'),
+              ],
+            ),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Accept the order
       final result = await DeliveryService.acceptOrder(
         orderId: orderId,
         deliveryPartnerId: partnerId,
       );
 
       if (mounted) {
+        // Clear any existing snackbars
+        ScaffoldMessenger.of(context).clearSnackBars();
+
         if (result['success'] == true) {
+          // ✅ SUCCESS - Show success message
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ Order accepted successfully!'),
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text('Order accepted successfully!'),
+                ],
+              ),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 2),
             ),
           );
 
-          // Refresh deliveries
-          final deliveriesController = context.read<DeliveriesController>();
-          await deliveriesController.fetchDeliveries();
+          // ✅ CRITICAL: Refresh BOTH controllers
+          debugPrint('🔄 Refreshing deliveries after accept...');
 
+          // Refresh DeliveriesController (if it exists)
+          try {
+            final deliveriesController = context.read<DeliveriesController>();
+            await deliveriesController.fetchDeliveries();
+            debugPrint('✅ DeliveriesController refreshed');
+          } catch (e) {
+            debugPrint('⚠️ DeliveriesController not found: $e');
+          }
+
+          // Refresh HomeController
           final homeController = context.read<HomeController>();
           await homeController.fetchDeliveries();
+          debugPrint('✅ HomeController refreshed');
+
+          // ✅ FORCE UI REBUILD
+          setState(() {});
+
         } else {
+          // ❌ FAILED - Show error
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['message'] ?? 'Failed to accept order'),
+              content: Row(
+                children: [
+                  const Icon(Icons.error, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(result['message'] ?? 'Failed to accept order'),
+                  ),
+                ],
+              ),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 3),
             ),
@@ -307,16 +376,24 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       debugPrint('❌ Error accepting order: $e');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Error accepting order'),
+            content: Row(
+              children: [
+                Icon(Icons.error, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Error accepting order'),
+              ],
+            ),
             backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
           ),
         );
       }
     } finally {
-      // Restart polling after dialog closes
+      // ✅ Restart polling after 2 seconds
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
         _startPolling();
@@ -356,10 +433,11 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       debugPrint('❌ Error rejecting order: $e');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Error rejecting order'),
+            content: Text('Error rejecting order'),
             backgroundColor: Colors.red,
           ),
         );
@@ -373,7 +451,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// ✅ NEW: Handle Mark as Picked Up
+  /// NEW: Handle Mark as Picked Up
   void _handleMarkPickedUp(BuildContext context, String orderId) async {
     final auth = context.read<AuthController>();
     final partnerId = auth.user?.id ?? '';
@@ -390,7 +468,7 @@ class _HomePageState extends State<HomePage> {
         if (result['success'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('📦 Order marked as picked up!'),
+              content: Text('Order marked as picked up!'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 2),
             ),
@@ -414,10 +492,11 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       debugPrint('❌ Error marking as picked up: $e');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Error marking as picked up'),
+            content: Text('Error marking as picked up'),
             backgroundColor: Colors.red,
           ),
         );
@@ -425,7 +504,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// ✅ NEW: Handle Mark as In Transit
+  /// NEW: Handle Mark as In Transit
   void _handleMarkInTransit(BuildContext context, String orderId) async {
     final auth = context.read<AuthController>();
     final partnerId = auth.user?.id ?? '';
@@ -442,7 +521,7 @@ class _HomePageState extends State<HomePage> {
         if (result['success'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('🚚 Order marked as in transit!'),
+              content: Text('Order marked as in transit!'),
               backgroundColor: Colors.purple,
               duration: Duration(seconds: 2),
             ),
@@ -466,10 +545,11 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       debugPrint('❌ Error marking as in transit: $e');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('❌ Error marking as in transit'),
+            content: Text('Error marking as in transit'),
             backgroundColor: Colors.red,
           ),
         );
@@ -477,7 +557,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// ✅ NEW: Handle Mark as Delivered
+  /// NEW: Handle Mark as Delivered
   void _handleMarkDelivered(BuildContext context, String orderId) async {
     // Show confirmation dialog
     final confirm = await showDialog<bool>(
@@ -535,7 +615,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Icon(Icons.celebration, color: Colors.white),
                     SizedBox(width: 12),
-                    Text('✅ Order delivered successfully!'),
+                    Text('Order delivered successfully!'),
                   ],
                 ),
                 backgroundColor: Colors.green,
@@ -561,10 +641,11 @@ class _HomePageState extends State<HomePage> {
         }
       } catch (e) {
         debugPrint('❌ Error marking as delivered: $e');
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('❌ Error marking as delivered'),
+              content: Text('Error marking as delivered'),
               backgroundColor: Colors.red,
             ),
           );
@@ -575,22 +656,31 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _requestLocationPermission() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
     if (!serviceEnabled) {
-      if (mounted) _showLocationServiceDialog();
+      if (mounted) {
+        _showLocationServiceDialog();
+      }
       return;
     }
 
     LocationPermission permission = await Geolocator.checkPermission();
+
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
+
       if (permission == LocationPermission.denied) {
-        if (mounted) _showPermissionDeniedDialog();
+        if (mounted) {
+          _showPermissionDeniedDialog();
+        }
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      if (mounted) _showPermissionPermanentlyDeniedDialog();
+      if (mounted) {
+        _showPermissionPermanentlyDeniedDialog();
+      }
       return;
     }
   }
@@ -678,7 +768,7 @@ class _HomePageState extends State<HomePage> {
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Order accepted successfully!'),
+            content: Text('Order accepted successfully!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
@@ -761,8 +851,8 @@ class _HomePageState extends State<HomePage> {
     final pending = home.pendingCount;
     final cancelled = home.cancelledCount;
     final isOnline = home.isOnline;
-    final userName = auth.user?.name ?? 'Delivery Partner';
 
+    final userName = auth.user?.name ?? 'Delivery Partner';
     final now = DateTime.now();
     final dateStr = DateFormat('EEE, d MMM').format(now);
 
@@ -906,13 +996,13 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    /// NEW ORDERS SECTION (Priority Display)
+                    /// NEW ORDERS SECTION - Priority Display
                     if (newOrders.isNotEmpty) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
-                            '🔔 New Orders',
+                            'New Orders',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -948,7 +1038,7 @@ class _HomePageState extends State<HomePage> {
                       const SizedBox(height: 24),
                     ],
 
-                    /// ✅ ACTIVE DELIVERY - WITH COOL EMPTY STATE
+                    /// ACTIVE DELIVERY - WITH COOL EMPTY STATE
                     const Text(
                       'Active Delivery',
                       style: TextStyle(
@@ -961,6 +1051,7 @@ class _HomePageState extends State<HomePage> {
                     // Show active delivery card OR empty state
                     if (current != null)
                       CurrentDeliveryCard(
+                        key: ValueKey('active_${current.id}'),
                         delivery: current,
                         onCall: () {
                           debugPrint('📞 Calling customer: ${current.customerName}');
@@ -990,6 +1081,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                     const SizedBox(height: 12),
                     _buildPickupCard(),
+
                     const SizedBox(height: 24),
 
                     /// UPCOMING ORDERS
@@ -1023,6 +1115,7 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                     const SizedBox(height: 12),
+
                     if (upcoming.isEmpty)
                       Center(
                         child: Padding(
@@ -1039,6 +1132,7 @@ class _HomePageState extends State<HomePage> {
                             .map((d) => UpcomingTile(delivery: d))
                             .toList(),
                       ),
+
                     const SizedBox(height: 100),
                   ],
                 ),
@@ -1216,7 +1310,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// ✅ NEW: Build Empty Active Delivery State
+  /// NEW: Build Empty Active Delivery State
   Widget _buildEmptyActiveDelivery(bool isOnline) {
     return Container(
       width: double.infinity,
@@ -1256,9 +1350,7 @@ class _HomePageState extends State<HomePage> {
 
           // Text
           Text(
-            isOnline
-                ? 'Searching for orders...'
-                : 'Go online to receive orders',
+            isOnline ? 'Searching for orders...' : 'Go online to receive orders',
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -1267,7 +1359,6 @@ class _HomePageState extends State<HomePage> {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
-
           Text(
             isOnline
                 ? 'New delivery requests will appear here'
@@ -1279,7 +1370,7 @@ class _HomePageState extends State<HomePage> {
             textAlign: TextAlign.center,
           ),
 
-          // Optional: Animated dots for "searching"
+          // Optional: Animated dots for searching
           if (isOnline) ...[
             const SizedBox(height: 16),
             Row(
@@ -1298,7 +1389,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// ✅ NEW: Animated loading dot
+  /// NEW: Animated loading dot
   Widget _buildLoadingDot(int delay) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
@@ -1342,8 +1433,8 @@ class SwipeToggleButton extends StatefulWidget {
 }
 
 class _SwipeToggleButtonState extends State<SwipeToggleButton> {
-  double _dragPosition = 0.0;
-  bool _isDragging = false;
+  double dragPosition = 0.0;
+  bool isDragging = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1353,7 +1444,7 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
     final maxDrag = screenWidth - thumbWidth;
 
     final targetPosition = widget.isOnline ? maxDrag : 0.0;
-    final currentPosition = _isDragging ? _dragPosition : targetPosition;
+    final currentPosition = isDragging ? dragPosition : targetPosition;
     final double dragPercentage = (currentPosition / maxDrag).clamp(0.0, 1.0);
 
     final Color backgroundColor = Color.lerp(
@@ -1387,7 +1478,7 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
               Expanded(
                 child: Center(
                   child: AnimatedOpacity(
-                    opacity: !widget.isOnline && !_isDragging ? 1.0 : 0.5,
+                    opacity: !widget.isOnline && !isDragging ? 1.0 : 0.5,
                     duration: const Duration(milliseconds: 200),
                     child: const Text(
                       'Offline',
@@ -1403,7 +1494,7 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
               Expanded(
                 child: Center(
                   child: AnimatedOpacity(
-                    opacity: widget.isOnline && !_isDragging ? 1.0 : 0.5,
+                    opacity: widget.isOnline && !isDragging ? 1.0 : 0.5,
                     duration: const Duration(milliseconds: 200),
                     child: const Text(
                       'Online',
@@ -1419,7 +1510,9 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
             ],
           ),
           AnimatedPositioned(
-            duration: _isDragging ? Duration.zero : const Duration(milliseconds: 300),
+            duration: isDragging
+                ? Duration.zero
+                : const Duration(milliseconds: 300),
             curve: Curves.easeOutBack,
             left: currentPosition,
             top: 2,
@@ -1427,19 +1520,19 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
             child: GestureDetector(
               onHorizontalDragStart: (_) {
                 setState(() {
-                  _isDragging = true;
-                  _dragPosition = targetPosition;
+                  isDragging = true;
+                  dragPosition = targetPosition;
                 });
               },
               onHorizontalDragUpdate: (d) {
                 setState(() {
-                  _dragPosition = (_dragPosition + d.delta.dx).clamp(0.0, maxDrag);
+                  dragPosition = (dragPosition + d.delta.dx).clamp(0.0, maxDrag);
                 });
               },
               onHorizontalDragEnd: (_) {
                 setState(() {
-                  _isDragging = false;
-                  if ((_dragPosition > maxDrag / 2) != widget.isOnline) {
+                  isDragging = false;
+                  if (dragPosition > maxDrag / 2 && !widget.isOnline) {
                     widget.onToggle();
                   }
                 });

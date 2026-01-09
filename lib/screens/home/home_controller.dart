@@ -1,86 +1,127 @@
 // lib/screens/home/home_controller.dart
 
 import 'package:flutter/material.dart';
-import '../../data/repository/delivery_repository.dart';
-import '../../data/repository/user_repository.dart';
 import '../../models/delivery_model.dart';
+import '../../services/delivery_service.dart';
 import '../../services/api_service.dart';
 import '../../services/location_service.dart';
 
 class HomeController extends ChangeNotifier {
-  final DeliveryRepository _deliveryRepo = DeliveryRepository();
-  final UserRepository _userRepo = UserRepository();
   final LocationService _locationService = LocationService();
+
+  // ✅ REAL DATA from backend
+  List<DeliveryModel> _allDeliveries = [];
 
   bool _isOnline = false; // Start offline by default
   bool _isLoading = false;
   String? _errorMessage;
+  String? _partnerId;
 
   bool get isOnline => _isOnline;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isLocationTracking => _locationService.isTracking;
-  String get userName => _userRepo.getUser().name;
 
-  // Added getter for partner ID
-  String get partnerId => _getPartnerId();
+  // ✅ Real getters from backend data
+  List<DeliveryModel> get allDeliveries => _allDeliveries;
+  int get totalCount => _allDeliveries.length;
 
-  List<DeliveryModel> get allDeliveries => _deliveryRepo.getAllDeliveries();
-  int get totalCount => allDeliveries.length;
-  int get pendingCount => _deliveryRepo.getPendingDeliveries().length;
-  int get completedCount => _deliveryRepo.getCompletedDeliveries().length;
-  int get cancelledCount => _deliveryRepo.getCancelledDeliveries().length;
+  int get pendingCount => _allDeliveries
+      .where((d) => d.status.toLowerCase() == 'pending')
+      .length;
 
+  int get completedCount => _allDeliveries
+      .where((d) => d.status.toLowerCase() == 'delivered')
+      .length;
+
+  int get cancelledCount => _allDeliveries
+      .where((d) => d.status.toLowerCase() == 'cancelled')
+      .length;
+
+  /// ✅ FIXED: Get current active delivery (accepted/picked_up/in_transit)
   DeliveryModel? get currentDelivery {
-    final list = _deliveryRepo.getPendingDeliveries();
-    return list.isNotEmpty ? list.first : null;
+    final current = _allDeliveries.where((d) {
+      final status = d.status.toLowerCase();
+      return status == 'accepted' ||
+          status == 'picked_up' ||
+          status == 'in_transit';
+    }).toList();
+
+    // 🔵 DEBUG
+    debugPrint('═══════════════════════════════════════');
+    debugPrint('🟢 CURRENT DELIVERY GETTER CALLED:');
+    debugPrint('   All deliveries count: ${_allDeliveries.length}');
+    debugPrint('   Filtered current count: ${current.length}');
+
+    if (current.isNotEmpty) {
+      debugPrint('   ✅ FOUND CURRENT DELIVERY:');
+      debugPrint('      ID: ${current.first.id}');
+      debugPrint('      Status: ${current.first.status}');
+      debugPrint('      Customer: ${current.first.customerName}');
+    } else {
+      debugPrint('   ❌ NO CURRENT DELIVERY FOUND');
+    }
+    debugPrint('═══════════════════════════════════════');
+
+    return current.isNotEmpty ? current.first : null;
   }
 
-  List<DeliveryModel> get upcomingDeliveries =>
-      _deliveryRepo.getPendingDeliveries();
+  /// ✅ Get upcoming deliveries (accepted status, not yet picked up)
+  List<DeliveryModel> get upcomingDeliveries {
+    return _allDeliveries
+        .where((d) => d.status.toLowerCase() == 'accepted')
+        .skip(1) // Skip the first one (shown in current)
+        .toList();
+  }
 
-  /// ✅ NEW: Fetch/refresh deliveries from backend
+  /// ✅ Set partner ID
+  void setPartnerId(String id) {
+    _partnerId = id;
+    debugPrint('✅ Partner ID set: $id');
+  }
+
+  /// ✅ Fetch deliveries from backend
   Future<void> fetchDeliveries() async {
-    try {
-      debugPrint('📋 Refreshing deliveries...');
-      // Repository methods are already accessible via getters
-      // No need to call a refresh method - just notify listeners
-      notifyListeners();
-      debugPrint('✅ Deliveries refreshed successfully');
-    } catch (e) {
-      debugPrint('❌ Error refreshing deliveries: $e');
-      _errorMessage = 'Failed to refresh deliveries';
-      notifyListeners();
+    if (_partnerId == null || _partnerId!.isEmpty) {
+      debugPrint('❌ Cannot fetch: Partner ID is null');
+      return;
     }
-  }
 
-  /// ✅ NEW: Load new orders for delivery partner
-  Future<void> loadNewOrders() async {
     try {
-      debugPrint('📋 Loading new orders...');
-      // This is a placeholder - implement based on your needs
-      // You might want to fetch from DeliveryService.getNewOrders
-      notifyListeners();
-    } catch (e) {
-      debugPrint('❌ Error loading new orders: $e');
-    }
-  }
+      debugPrint('📋 Fetching deliveries for partner: $_partnerId');
 
-  /// ✅ NEW: Load active orders for delivery partner
-  Future<void> loadActiveOrders() async {
-    try {
-      debugPrint('📋 Loading active orders...');
-      // This is a placeholder - implement based on your needs
-      // You might want to fetch from DeliveryService.getActiveOrders
+      final data = await DeliveryService.getActiveDeliveries(_partnerId!);
+
+      // 🔵 DEBUG
+      debugPrint('═══════════════════════════════════════');
+      debugPrint('🔵 FETCHED DELIVERIES FROM API:');
+      debugPrint('   Total count: ${data.length}');
+
+      _allDeliveries = data;
+
+      // 🔵 DEBUG each delivery
+      for (var delivery in _allDeliveries) {
+        debugPrint('   - Order ${delivery.id}: ${delivery.status}');
+      }
+      debugPrint('═══════════════════════════════════════');
+
+      _errorMessage = null;
       notifyListeners();
+      debugPrint('✅ Deliveries fetched successfully');
     } catch (e) {
-      debugPrint('❌ Error loading active orders: $e');
+      debugPrint('❌ Error fetching deliveries: $e');
+      _errorMessage = 'Failed to fetch deliveries';
+      notifyListeners();
     }
   }
 
   /// Toggle online/offline status with backend call
   Future<void> toggleOnline() async {
-    if (_isLoading) return; // Prevent multiple simultaneous requests
+    if (_isLoading) return;
+    if (_partnerId == null || _partnerId!.isEmpty) {
+      debugPrint('❌ Cannot toggle: Partner ID is null');
+      return;
+    }
 
     _isLoading = true;
     _errorMessage = null;
@@ -88,60 +129,54 @@ class HomeController extends ChangeNotifier {
 
     final newStatus = !_isOnline;
 
-    final result = await ApiService.updatePartnerStatus(
-      partnerId: _getPartnerId(),
-      isOnline: newStatus,
-      partnerName: userName,
-    );
+    try {
+      final result = await ApiService.updatePartnerStatus(
+        partnerId: _partnerId!,
+        isOnline: newStatus,
+        partnerName: 'Delivery Partner', // You can pass actual name here
+      );
 
-    if (result['success'] == true || result['status'] == 'success') {
-      _isOnline = newStatus;
-      debugPrint('✅ Status updated: ${_isOnline ? 'Online' : 'Offline'}');
+      if (result['success'] == true || result['status'] == 'success') {
+        _isOnline = newStatus;
+        debugPrint('✅ Status updated: ${_isOnline ? 'Online' : 'Offline'}');
 
-      // Start or stop location tracking based on status
-      if (_isOnline) {
-        debugPrint('🌍 Starting location tracking...');
-        _locationService.startLocationTracking(
-          _getPartnerId(),  // ✅ FIXED: Added partnerId parameter
-          onError: (error) {
-            _errorMessage = error;
-            notifyListeners();
-          },
-        );
+        // Start or stop location tracking
+        if (_isOnline) {
+          debugPrint('🌍 Starting location tracking...');
+          _locationService.startLocationTracking(
+            _partnerId!,
+            onError: (error) {
+              _errorMessage = error;
+              notifyListeners();
+            },
+          );
+        } else {
+          debugPrint('🛑 Stopping location tracking...');
+          _locationService.stopLocationTracking();
+        }
       } else {
-        debugPrint('🛑 Stopping location tracking...');
-        _locationService.stopLocationTracking();
+        _errorMessage = result['message'] ?? 'Failed to update status';
+        debugPrint('❌ Error: $_errorMessage');
       }
-
-      // Print debug logs if available
-      if (result['debug_log'] != null) {
-        debugPrint('📋 Server Debug Log:');
-        for (var log in result['debug_log']) {
-          debugPrint('   $log');
-        }
-      }
-    } else {
-      _errorMessage = result['message'] ?? 'Failed to update status';
-      debugPrint('❌ Error: $_errorMessage');
-
-      // Print debug logs if available
-      if (result['debug_log'] != null) {
-        debugPrint('📋 Server Debug Log:');
-        for (var log in result['debug_log']) {
-          debugPrint('   $log');
-        }
-      }
+    } catch (e) {
+      debugPrint('❌ Error toggling status: $e');
+      _errorMessage = 'Failed to update status';
     }
 
     _isLoading = false;
     notifyListeners();
   }
 
-  /// Fetch current status from backend (call on app start)
+  /// Fetch current status from backend
   Future<void> fetchOnlineStatus() async {
+    if (_partnerId == null || _partnerId!.isEmpty) {
+      debugPrint('❌ Cannot fetch status: Partner ID is null');
+      return;
+    }
+
     try {
       final result = await ApiService.getPartnerStatus(
-        partnerId: _getPartnerId(),
+        partnerId: _partnerId!,
       );
 
       if (result['success'] == true || result['status'] == 'success') {
@@ -153,7 +188,7 @@ class HomeController extends ChangeNotifier {
         // If user was online, restart location tracking
         if (_isOnline) {
           _locationService.startLocationTracking(
-            _getPartnerId(),  // ✅ FIXED: Added partnerId parameter
+            _partnerId!,
             onError: (error) {
               _errorMessage = error;
               notifyListeners();
@@ -169,9 +204,12 @@ class HomeController extends ChangeNotifier {
     }
   }
 
-  /// ✅ NEW: Initialize controller - fetch status and deliveries
-  Future<void> initialize() async {
-    debugPrint('🚀 Initializing HomeController...');
+  /// ✅ Initialize controller - fetch status and deliveries
+  Future<void> initialize(String partnerId) async {
+    debugPrint('🚀 Initializing HomeController for partner: $partnerId');
+
+    _partnerId = partnerId;
+
     try {
       // Fetch online status from backend
       await fetchOnlineStatus();
@@ -187,7 +225,7 @@ class HomeController extends ChangeNotifier {
     }
   }
 
-  /// ✅ NEW: Force refresh all data
+  /// ✅ Force refresh all data
   Future<void> refresh() async {
     debugPrint('🔄 Refreshing all data...');
     try {
@@ -203,19 +241,13 @@ class HomeController extends ChangeNotifier {
     }
   }
 
-  /// Get partner ID from user repository
-  String _getPartnerId() {
-    final user = _userRepo.getUser();
-    return user.id ?? user.phone ?? 'unknown';
-  }
-
   /// Clear error message
   void clearError() {
     _errorMessage = null;
     notifyListeners();
   }
 
-  /// ✅ NEW: Update online status without toggling
+  /// ✅ Update online status without toggling
   void setOnlineStatus(bool status) {
     if (_isOnline != status) {
       _isOnline = status;
@@ -225,7 +257,6 @@ class HomeController extends ChangeNotifier {
 
   @override
   void dispose() {
-    // Stop location tracking when controller is disposed
     _locationService.dispose();
     super.dispose();
   }

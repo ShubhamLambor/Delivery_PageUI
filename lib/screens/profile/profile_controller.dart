@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-
 import '../../data/repository/user_repository.dart';
 
 class ProfileController extends ChangeNotifier {
@@ -11,7 +10,12 @@ class ProfileController extends ChangeNotifier {
 
   String name = '';
   String email = '';
+  String phone = '';
   String profilePic = '';
+
+  // Verification status
+  bool isEmailVerified = false;
+  bool isPhoneVerified = false;
   bool isLoading = false;
 
   // Getter for the UI
@@ -25,11 +29,15 @@ class ProfileController extends ChangeNotifier {
     isLoading = true;
     notifyListeners();
 
-    // Assuming getUserProfile is async. If not, remove 'await'.
     final user = await _repo.getUserProfile();
     name = user.name;
     email = user.email;
+    phone = user.phone ?? '';
     profilePic = user.profilePic;
+
+    // Load verification status from backend
+    isEmailVerified = user.isEmailVerified ?? false;
+    isPhoneVerified = user.isPhoneVerified ?? false;
 
     isLoading = false;
     notifyListeners();
@@ -41,15 +49,39 @@ class ProfileController extends ChangeNotifier {
 
   Future<void> updateName(String newName) async {
     _repo.updateUserName(newName);
-
     name = newName;
     notifyListeners();
   }
 
   Future<void> updateProfilePic(String urlOrPath) async {
     _repo.updateProfilePic(urlOrPath);
-
     profilePic = urlOrPath;
+    notifyListeners();
+  }
+
+  // Update email and phone
+  Future<void> updateEmail(String newEmail) async {
+    await _repo.updateEmail(newEmail);
+    email = newEmail;
+    isEmailVerified = false; // Reset verification status
+    notifyListeners();
+  }
+
+  Future<void> updatePhone(String newPhone) async {
+    await _repo.updatePhone(newPhone);
+    phone = newPhone;
+    isPhoneVerified = false; // Reset verification status
+    notifyListeners();
+  }
+
+  // Mark as verified after OTP confirmation
+  void markEmailVerified() {
+    isEmailVerified = true;
+    notifyListeners();
+  }
+
+  void markPhoneVerified() {
+    isPhoneVerified = true;
     notifyListeners();
   }
 
@@ -80,7 +112,6 @@ class ProfileController extends ChangeNotifier {
     if (picked == null) return;
 
     final String path = picked.path;
-
     await updateProfilePic(path);
   }
 }

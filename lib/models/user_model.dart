@@ -8,6 +8,8 @@ class UserModel {
   final String profilePic;
   final String role;
   final String? vehicleNumber;
+  final bool isEmailVerified;
+  final bool isPhoneVerified;
 
   UserModel({
     required this.id,
@@ -15,13 +17,30 @@ class UserModel {
     required this.email,
     required this.phone,
     required this.profilePic,
-    this.role = 'delivery',  // ✅ Changed from 'delivery_partner'
+    this.role = 'delivery',
     this.vehicleNumber,
+    this.isEmailVerified = false,
+    this.isPhoneVerified = false,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
-    // ✅ Parse role directly without normalization
+    // Parse role directly without normalization
     String parsedRole = json['role']?.toString() ?? 'delivery';
+
+    // Parse verification status (handles both int and bool from backend)
+    bool emailVerified = false;
+    if (json['is_email_verified'] != null) {
+      emailVerified = json['is_email_verified'] == 1 ||
+          json['is_email_verified'] == true ||
+          json['is_email_verified'] == '1';
+    }
+
+    bool phoneVerified = false;
+    if (json['is_phone_verified'] != null) {
+      phoneVerified = json['is_phone_verified'] == 1 ||
+          json['is_phone_verified'] == true ||
+          json['is_phone_verified'] == '1';
+    }
 
     return UserModel(
       id: json['uid']?.toString() ?? json['id']?.toString() ?? '',
@@ -31,6 +50,8 @@ class UserModel {
       profilePic: json['profilePic'] ?? json['profile_pic'] ?? "",
       role: parsedRole,
       vehicleNumber: json['vehicle_number']?.toString(),
+      isEmailVerified: emailVerified,
+      isPhoneVerified: phoneVerified,
     );
   }
 
@@ -42,6 +63,8 @@ class UserModel {
       "phone": phone,
       "profilePic": profilePic,
       "role": role,
+      "isEmailVerified": isEmailVerified,
+      "isPhoneVerified": isPhoneVerified,
       if (vehicleNumber != null) "vehicleNumber": vehicleNumber,
     };
   }
@@ -54,6 +77,8 @@ class UserModel {
     String? profilePic,
     String? role,
     String? vehicleNumber,
+    bool? isEmailVerified,
+    bool? isPhoneVerified,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -63,12 +88,14 @@ class UserModel {
       profilePic: profilePic ?? this.profilePic,
       role: role ?? this.role,
       vehicleNumber: vehicleNumber ?? this.vehicleNumber,
+      isEmailVerified: isEmailVerified ?? this.isEmailVerified,
+      isPhoneVerified: isPhoneVerified ?? this.isPhoneVerified,
     );
   }
 
   // ✅ Helper method to check if user is a delivery partner
   bool get isDeliveryPartner {
-    return role == 'delivery';  // ✅ Only checks for 'delivery'
+    return role == 'delivery';
   }
 
   // ✅ Helper method to check if user is a customer
@@ -81,10 +108,33 @@ class UserModel {
     return role == 'admin';
   }
 
+  // ✅ Check if both email and phone are verified
+  bool get isFullyVerified {
+    return isEmailVerified && isPhoneVerified;
+  }
+
+  // ✅ Check if at least one contact method is verified
+  bool get hasAnyVerification {
+    return isEmailVerified || isPhoneVerified;
+  }
+
+  // ✅ Get verification status summary
+  String get verificationStatus {
+    if (isFullyVerified) {
+      return 'Fully Verified';
+    } else if (isEmailVerified && !isPhoneVerified) {
+      return 'Email Verified';
+    } else if (!isEmailVerified && isPhoneVerified) {
+      return 'Phone Verified';
+    } else {
+      return 'Not Verified';
+    }
+  }
+
   // ✅ Display-friendly role name
   String get displayRole {
     switch (role) {
-      case 'delivery':  // ✅ Changed from 'delivery_partner'
+      case 'delivery':
         return 'Delivery Partner';
       case 'customer':
         return 'Customer';
@@ -97,7 +147,7 @@ class UserModel {
 
   @override
   String toString() {
-    return 'UserModel(id: $id, name: $name, email: $email, phone: $phone, role: $role)';
+    return 'UserModel(id: $id, name: $name, email: $email, phone: $phone, role: $role, emailVerified: $isEmailVerified, phoneVerified: $isPhoneVerified)';
   }
 
   @override
@@ -110,7 +160,9 @@ class UserModel {
         other.phone == phone &&
         other.profilePic == profilePic &&
         other.role == role &&
-        other.vehicleNumber == vehicleNumber;
+        other.vehicleNumber == vehicleNumber &&
+        other.isEmailVerified == isEmailVerified &&
+        other.isPhoneVerified == isPhoneVerified;
   }
 
   @override
@@ -121,6 +173,8 @@ class UserModel {
     phone.hashCode ^
     profilePic.hashCode ^
     role.hashCode ^
-    vehicleNumber.hashCode;
+    vehicleNumber.hashCode ^
+    isEmailVerified.hashCode ^
+    isPhoneVerified.hashCode;
   }
 }

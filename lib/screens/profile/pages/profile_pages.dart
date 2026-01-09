@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/locale_provider.dart';
-
+import '../profile_controller.dart';
+import '../verification/otp_verification_page.dart';
 
 // ==============================================================================
 //  1. DOCUMENTS PAGE (Status Cards)
@@ -142,7 +143,7 @@ class VehicleDetailsPage extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF1E88E5), Color(0xFF1565C0)], // Blue Gradient
+                  colors: [Color(0xFF1E88E5), Color(0xFF1565C0)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -204,18 +205,6 @@ class VehicleDetailsPage extends StatelessWidget {
       ],
     );
   }
-
-  Widget _buildDetailTile(IconData icon, String title, String subtitle) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, color: Colors.blue)),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        subtitle: Text(subtitle, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-      ),
-    );
-  }
 }
 
 // ==============================================================================
@@ -239,7 +228,7 @@ class BankDetailsPage extends StatelessWidget {
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF4527A0), Color(0xFF7E57C2)], // Purple Gradient
+                  colors: [Color(0xFF4527A0), Color(0xFF7E57C2)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -497,7 +486,311 @@ class DeliveryStatsPage extends StatelessWidget {
 }
 
 // ==============================================================================
-//  6. SETTINGS & SUPPORT PAGES
+//  6. ACCOUNT SETTINGS PAGE (Email & Phone Verification)
+// ==============================================================================
+
+class AccountSettingsPage extends StatelessWidget {
+  const AccountSettingsPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<ProfileController>(
+      builder: (context, controller, _) {
+        return Scaffold(
+          backgroundColor: const Color(0xFFF8F9FA),
+          appBar: _buildAppBar(context, 'Account Settings'),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // Email Verification Card
+              _buildVerificationCard(
+                context: context,
+                icon: Icons.email_outlined,
+                title: 'Email Address',
+                value: controller.email.isNotEmpty ? controller.email : 'Not added',
+                isVerified: controller.isEmailVerified,
+                channel: 'Email',
+                color: Colors.blue,
+                onVerify: () async {
+                  if (controller.email.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please add your email first'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return;
+                  }
+
+                  final result = await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => OtpVerificationPage(
+                        channel: 'Email',
+                        destination: controller.email,
+                      ),
+                    ),
+                  );
+
+                  if (result == true) {
+                    controller.markEmailVerified();
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Email verified successfully!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                },
+                onEdit: () async {
+                  final newEmail = await _showEditDialog(
+                    context,
+                    title: 'Update Email',
+                    currentValue: controller.email,
+                    hint: 'Enter email address',
+                    keyboardType: TextInputType.emailAddress,
+                  );
+
+                  if (newEmail != null && newEmail.trim().isNotEmpty) {
+                    await controller.updateEmail(newEmail.trim());
+                  }
+                },
+              ),
+
+              const SizedBox(height: 16),
+
+              // Phone Verification Card
+              _buildVerificationCard(
+                context: context,
+                icon: Icons.phone_iphone,
+                title: 'Mobile Number',
+                value: controller.phone.isNotEmpty ? controller.phone : 'Not added',
+                isVerified: controller.isPhoneVerified,
+                channel: 'Phone',
+                color: Colors.teal,
+                onVerify: () async {
+                  if (controller.phone.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please add your phone number first'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                    return;
+                  }
+
+                  final result = await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => OtpVerificationPage(
+                        channel: 'Phone',
+                        destination: controller.phone,
+                      ),
+                    ),
+                  );
+
+                  if (result == true) {
+                    controller.markPhoneVerified();
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Phone number verified successfully!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                },
+                onEdit: () async {
+                  final newPhone = await _showEditDialog(
+                    context,
+                    title: 'Update Phone',
+                    currentValue: controller.phone,
+                    hint: 'Enter phone number',
+                    keyboardType: TextInputType.phone,
+                  );
+
+                  if (newPhone != null && newPhone.trim().isNotEmpty) {
+                    await controller.updatePhone(newPhone.trim());
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildVerificationCard({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String value,
+    required bool isVerified,
+    required String channel,
+    required Color color,
+    required VoidCallback onVerify,
+    required VoidCallback onEdit,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isVerified)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.check_circle, color: Colors.green, size: 14),
+                      SizedBox(width: 4),
+                      Text(
+                        'Verified',
+                        style: TextStyle(
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit, size: 16),
+                  label: const Text('Edit'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: color,
+                    side: BorderSide(color: color),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: isVerified ? null : onVerify,
+                  icon: Icon(
+                    isVerified ? Icons.check_circle : Icons.verified_user,
+                    size: 16,
+                  ),
+                  label: Text(isVerified ? 'Verified' : 'Verify'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isVerified ? Colors.grey : color,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _showEditDialog(
+      BuildContext context, {
+        required String title,
+        required String currentValue,
+        required String hint,
+        required TextInputType keyboardType,
+      }) {
+    final controller = TextEditingController(text: currentValue);
+
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          decoration: InputDecoration(
+            labelText: hint,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==============================================================================
+//  7. OTHER SETTINGS & SUPPORT PAGES
 // ==============================================================================
 
 class AvailabilityPage extends StatefulWidget {
@@ -523,8 +816,8 @@ class _AvailabilityPageState extends State<AvailabilityPage> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Active Status', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  SizedBox(height: 4),
+                  const Text('Active Status', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
                   Text(isOnline ? 'You are visible to orders' : 'You are offline', style: TextStyle(color: isOnline ? Colors.green : Colors.grey, fontSize: 13)),
                 ],
               ),
@@ -542,14 +835,9 @@ class _AvailabilityPageState extends State<AvailabilityPage> {
   }
 }
 
-// ==============================================================================
-//  7. LANGUAGE PAGE (Updated & Connected)
-// ==============================================================================
-
 class LanguagePage extends StatelessWidget {
   const LanguagePage({super.key});
 
-  // Language Data
   final List<Map<String, String>> languages = const [
     {'code': 'en', 'name': 'English', 'nativeName': 'English'},
     {'code': 'hi', 'name': 'Hindi', 'nativeName': 'हिंदी'},
@@ -565,7 +853,6 @@ class LanguagePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Access the LocaleProvider
     final localeProvider = context.watch<LocaleProvider>();
 
     return Scaffold(
@@ -599,7 +886,6 @@ class LanguagePage extends StatelessWidget {
             ),
             child: ListTile(
               onTap: () async {
-                // Change locale via provider
                 await localeProvider.setLocale(Locale(language['code']!));
 
                 if (!context.mounted) return;
@@ -647,8 +933,6 @@ class LanguagePage extends StatelessWidget {
     );
   }
 }
-
-// -------------------------------------------------------------------------------
 
 class NotificationsPage extends StatelessWidget {
   const NotificationsPage({super.key});
@@ -720,7 +1004,9 @@ class ContactSupportPage extends StatelessWidget {
   }
 }
 
-// ---------------- COMMON HELPERS ----------------
+// ==============================================================================
+//  COMMON HELPERS
+// ==============================================================================
 
 PreferredSizeWidget _buildAppBar(BuildContext context, String title) {
   return AppBar(
