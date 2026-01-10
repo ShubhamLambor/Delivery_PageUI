@@ -14,17 +14,14 @@ import 'package:deliveryui/screens/nav/bottom_nav.dart';
 import 'package:deliveryui/screens/nav/nav_controller.dart';
 import 'package:deliveryui/screens/profile/profile_controller.dart';
 import 'package:deliveryui/screens/splash/splash_screen.dart';
-
 // --- KYC Page Import ---
 import 'package:deliveryui/screens/kyc/kyc_page.dart';
-
 // --- Locale Provider ---
 import 'core/locale_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. Check Shared Preferences for login status (Replaces Firebase check)
   final prefs = await SharedPreferences.getInstance();
   final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
 
@@ -42,29 +39,44 @@ class DeliveryBoyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => NavController()),
-        ChangeNotifierProvider(create: (_) => ProfileController()),
-        ChangeNotifierProvider(create: (_) => HomeController()),
-        ChangeNotifierProvider(create: (_) => DeliveriesController()),
-        ChangeNotifierProvider(create: (_) => EarningsController()),
         ChangeNotifierProvider(create: (_) => AuthController()),
+
+        // HomeController needs AuthController for partnerId
+        ChangeNotifierProxyProvider<AuthController, HomeController>(
+          create: (_) => HomeController(),
+          update: (ctx, auth, previous) {
+            // expose a setter in HomeController if needed
+            previous ??= HomeController();
+            final partnerId = auth.getCurrentUserId();
+            if (partnerId != null) {
+              previous.setPartnerId(partnerId);
+            }
+            return previous;
+          },
+        ),
+
+        // DeliveriesController needs AuthController
+        ChangeNotifierProxyProvider<AuthController, DeliveriesController>(
+          create: (ctx) =>
+              DeliveriesController(authController: ctx.read<AuthController>()),
+          update: (ctx, auth, previous) =>
+          previous ?? DeliveriesController(authController: auth),
+        ),
+
+        ChangeNotifierProvider(create: (_) => ProfileController()),
+        ChangeNotifierProvider(create: (_) => EarningsController()),
       ],
       child: Consumer<LocaleProvider>(
         builder: (context, localeProvider, child) {
           return MaterialApp(
             title: 'Tiffinity Delivery Partner',
             debugShowCheckedModeBanner: false,
-
-            // Bind active locale
             locale: localeProvider.locale,
-
             theme: ThemeData(
               primarySwatch: Colors.green,
               useMaterial3: true,
             ),
-
-            // Pass the checked status to Splash
             home: SplashScreen(isLoggedIn: isLoggedIn),
-
             routes: {
               '/home': (context) => const BottomNav(),
               '/login': (context) => const LoginPage(),

@@ -1,6 +1,7 @@
 // lib/controllers/deliveries_controller.dart
 
 import 'package:flutter/material.dart';
+
 import '../../data/repository/delivery_repository.dart';
 import '../../models/delivery_model.dart';
 import '../../services/delivery_service.dart';
@@ -13,7 +14,7 @@ class DeliveriesController extends ChangeNotifier {
   DeliveriesController({AuthController? authController})
       : _authController = authController;
 
-  /// 'All', 'New', 'Pending', 'Completed', 'Cancelled'
+  /// Tab filters: 'All', 'New', 'Pending', 'Completed', 'Cancelled'
   String _filter = 'All';
   String get filter => _filter;
 
@@ -25,21 +26,54 @@ class DeliveriesController extends ChangeNotifier {
 
   List<DeliveryModel> get _all => _repo.getAllDeliveries();
 
-  List<DeliveryModel> get filteredDeliveries {
-    if (_filter == 'All') return _all;
-    return _all.where((d) => d.status == _filter).toList();
+  /// Map backend status to UI status groups
+  /// Backend examples:
+  /// - 'pending', 'out_for_delivery', 'picked_up'  -> 'Pending'
+  /// - 'delivered'                                  -> 'Completed'
+  /// - 'cancelled'                                  -> 'Cancelled'
+  /// - 'assigned/created'                           -> 'New'
+  String _normalizeStatus(String backendStatus) {
+    final s = backendStatus.toLowerCase();
+
+    if (s == 'delivered') return 'Completed';
+    if (s == 'cancelled' || s == 'canceled') return 'Cancelled';
+    if (s == 'pending' || s == 'out_for_delivery' || s == 'picked_up') {
+      return 'Pending';
+    }
+    if (s == 'assigned' || s == 'created') return 'New';
+
+    // Fallback to original text if unknown
+    return backendStatus;
   }
 
-  // Get new orders that need acceptance
+  /// List exposed to UI, filtered by current tab
+  List<DeliveryModel> get filteredDeliveries {
+    if (_filter == 'All') return _all;
+
+    return _all.where((d) {
+      final normalized = _normalizeStatus(d.status);
+      return normalized == _filter;
+    }).toList();
+  }
+
+  /// Get new orders that need acceptance (optional usage)
   List<DeliveryModel> get newOrders {
-    return _all.where((d) => d.status == 'New').toList();
+    return _all.where((d) => _normalizeStatus(d.status) == 'New').toList();
   }
 
   int get totalCount => _all.length;
-  int get newCount => _all.where((d) => d.status == 'New').length;
-  int get pendingCount => _repo.getPendingDeliveries().length;
-  int get completedCount => _repo.getCompletedDeliveries().length;
-  int get cancelledCount => _repo.getCancelledDeliveries().length;
+
+  int get newCount =>
+      _all.where((d) => _normalizeStatus(d.status) == 'New').length;
+
+  int get pendingCount =>
+      _all.where((d) => _normalizeStatus(d.status) == 'Pending').length;
+
+  int get completedCount =>
+      _all.where((d) => _normalizeStatus(d.status) == 'Completed').length;
+
+  int get cancelledCount =>
+      _all.where((d) => _normalizeStatus(d.status) == 'Cancelled').length;
 
   void changeFilter(String value) {
     if (_filter == value) return;
@@ -69,7 +103,7 @@ class DeliveriesController extends ChangeNotifier {
       eta: delivery.eta,
       amount: delivery.amount,
       time: delivery.time,
-      status: newStatus,
+      status: newStatus, // this is UI-normalized status (Pending/Completed/...)
     );
 
     _repo.addOrUpdateOrder(updated);
@@ -84,7 +118,6 @@ class DeliveriesController extends ChangeNotifier {
 
     try {
       final deliveryPartnerId = _authController?.user?.id ?? '';
-
       if (deliveryPartnerId.isEmpty) {
         debugPrint('⚠️ Cannot fetch deliveries: User not authenticated');
         _isLoading = false;
@@ -94,6 +127,10 @@ class DeliveriesController extends ChangeNotifier {
       }
 
       debugPrint('🔄 Fetching deliveries for partner: $deliveryPartnerId');
+
+      // Clear or reset repository if you want fresh data only
+
+      _repo.clearDeliveries(); // ensure this exists in your repository
 
       // Fetch new orders
       await fetchNewOrders();
@@ -109,7 +146,7 @@ class DeliveriesController extends ChangeNotifier {
       notifyListeners();
 
       debugPrint('✅ All deliveries fetched successfully');
-      debugPrint('   Total orders: ${_repo.realDeliveryCount}');
+      debugPrint(' Total orders: ${_repo.realDeliveryCount}');
     } catch (e) {
       _isLoading = false;
       _errorMessage = 'Failed to fetch deliveries: $e';
@@ -125,7 +162,6 @@ class DeliveriesController extends ChangeNotifier {
       if (deliveryPartnerId.isEmpty) return;
 
       debugPrint('🔄 Fetching active orders...');
-
       final result = await DeliveryService.getActiveOrders(
         deliveryPartnerId: deliveryPartnerId,
       );
@@ -139,12 +175,11 @@ class DeliveriesController extends ChangeNotifier {
           try {
             final delivery = DeliveryModel.fromJson(orderData);
             _repo.addOrUpdateOrder(delivery);
-            debugPrint('   ➕ Added active order: ${delivery.id}');
+            debugPrint(' ➕ Added active order: ${delivery.id}');
           } catch (e) {
-            debugPrint('   ⚠️ Error parsing order: $e');
+            debugPrint(' ⚠️ Error parsing order: $e');
           }
         }
-
         notifyListeners();
       }
     } catch (e) {
@@ -159,7 +194,6 @@ class DeliveriesController extends ChangeNotifier {
       if (deliveryPartnerId.isEmpty) return;
 
       debugPrint('🔄 Fetching new orders...');
-
       final result = await DeliveryService.getNewOrders(
         deliveryPartnerId: deliveryPartnerId,
       );
@@ -173,12 +207,11 @@ class DeliveriesController extends ChangeNotifier {
           try {
             final delivery = DeliveryModel.fromJson(orderData);
             _repo.addOrUpdateOrder(delivery);
-            debugPrint('   ➕ Added new order: ${delivery.id}');
+            debugPrint(' ➕ Added new order: ${delivery.id}');
           } catch (e) {
-            debugPrint('   ⚠️ Error parsing order: $e');
+            debugPrint(' ⚠️ Error parsing order: $e');
           }
         }
-
         notifyListeners();
       }
     } catch (e) {
@@ -193,7 +226,6 @@ class DeliveriesController extends ChangeNotifier {
       if (deliveryPartnerId.isEmpty) return;
 
       debugPrint('🔄 Fetching order history...');
-
       final result = await DeliveryService.getOrderHistory(
         deliveryPartnerId: deliveryPartnerId,
         limit: limit,
@@ -209,10 +241,9 @@ class DeliveriesController extends ChangeNotifier {
             final delivery = DeliveryModel.fromJson(orderData);
             _repo.addOrUpdateOrder(delivery);
           } catch (e) {
-            debugPrint('   ⚠️ Error parsing history order: $e');
+            debugPrint(' ⚠️ Error parsing history order: $e');
           }
         }
-
         notifyListeners();
       }
     } catch (e) {
@@ -227,7 +258,6 @@ class DeliveriesController extends ChangeNotifier {
       if (deliveryPartnerId.isEmpty) return null;
 
       debugPrint('📊 Fetching partner stats...');
-
       final result = await DeliveryService.getPartnerStats(
         deliveryPartnerId: deliveryPartnerId,
       );
@@ -256,7 +286,6 @@ class DeliveriesController extends ChangeNotifier {
 
     try {
       final deliveryPartnerId = _authController?.user?.id ?? '';
-
       if (deliveryPartnerId.isEmpty) {
         _isLoading = false;
         _errorMessage = 'User not authenticated';
@@ -265,22 +294,18 @@ class DeliveriesController extends ChangeNotifier {
       }
 
       debugPrint('✅ Accepting order: $orderId');
-
       final result = await DeliveryService.acceptOrder(
         orderId: orderId,
         deliveryPartnerId: deliveryPartnerId,
       );
 
       _isLoading = false;
-
       if (result['success'] == true) {
-        // Update local status
+        // UI side: show as Pending (backend: out_for_delivery)
         _updateStatus(orderId, 'Pending');
         _errorMessage = null;
 
-        // Refresh deliveries after acceptance
         await fetchDeliveries();
-
         notifyListeners();
         return true;
       } else {
@@ -305,7 +330,6 @@ class DeliveriesController extends ChangeNotifier {
 
     try {
       final deliveryPartnerId = _authController?.user?.id ?? '';
-
       if (deliveryPartnerId.isEmpty) {
         _isLoading = false;
         _errorMessage = 'User not authenticated';
@@ -314,7 +338,6 @@ class DeliveriesController extends ChangeNotifier {
       }
 
       debugPrint('❌ Rejecting order: $orderId');
-
       final result = await DeliveryService.rejectOrder(
         orderId: orderId,
         deliveryPartnerId: deliveryPartnerId,
@@ -322,15 +345,11 @@ class DeliveriesController extends ChangeNotifier {
       );
 
       _isLoading = false;
-
       if (result['success'] == true) {
-        // Remove from list or update status
         _repo.removeDelivery(orderId);
         _errorMessage = null;
 
-        // Refresh deliveries after rejection
         await fetchDeliveries();
-
         notifyListeners();
         return true;
       } else {
@@ -355,7 +374,6 @@ class DeliveriesController extends ChangeNotifier {
 
     try {
       final deliveryPartnerId = _authController?.user?.id ?? '';
-
       if (deliveryPartnerId.isEmpty) {
         _isLoading = false;
         _errorMessage = 'User not authenticated';
@@ -369,8 +387,8 @@ class DeliveriesController extends ChangeNotifier {
       );
 
       _isLoading = false;
-
       if (result['success'] == true) {
+        // picked_up still grouped as Pending in UI
         _updateStatus(orderId, 'Pending');
         await fetchDeliveries();
         notifyListeners();
@@ -396,7 +414,6 @@ class DeliveriesController extends ChangeNotifier {
 
     try {
       final deliveryPartnerId = _authController?.user?.id ?? '';
-
       if (deliveryPartnerId.isEmpty) {
         _isLoading = false;
         _errorMessage = 'User not authenticated';
@@ -411,8 +428,8 @@ class DeliveriesController extends ChangeNotifier {
       );
 
       _isLoading = false;
-
       if (result['success'] == true) {
+        // backend: delivered, UI: Completed
         _updateStatus(orderId, 'Completed');
         await fetchDeliveries();
         notifyListeners();
@@ -430,6 +447,7 @@ class DeliveriesController extends ChangeNotifier {
     }
   }
 
+  /// Old local-only helpers still usable from bottom sheet
   void markCompleted(String id) => _updateStatus(id, 'Completed');
   void markCancelled(String id) => _updateStatus(id, 'Cancelled');
 

@@ -3,6 +3,7 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/material.dart';
+
 import '../models/delivery_model.dart';
 
 class DeliveryService {
@@ -18,13 +19,14 @@ class DeliveryService {
   }) async {
     try {
       debugPrint('🔄 Updating order status...');
-      debugPrint('   Action: $action');
-      debugPrint('   Order ID: $orderId');
-      debugPrint('   Partner ID: $deliveryPartnerId');
-      if (reason != null) debugPrint('   Reason: $reason');
-      if (notes != null) debugPrint('   Notes: $notes');
+      debugPrint(' Action: $action');
+      debugPrint(' Order ID: $orderId');
+      debugPrint(' Partner ID: $deliveryPartnerId');
+      if (reason != null) debugPrint(' Reason: $reason');
+      if (notes != null) debugPrint(' Notes: $notes');
 
-      final response = await http.post(
+      final response = await http
+          .post(
         Uri.parse('$baseUrl/delivery/order_delivery_status.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -38,7 +40,8 @@ class DeliveryService {
           if (reason != null) 'reason': reason,
           if (notes != null) 'notes': notes,
         },
-      ).timeout(const Duration(seconds: 15));
+      )
+          .timeout(const Duration(seconds: 15));
 
       debugPrint('📥 Response Status: ${response.statusCode}');
       debugPrint('📥 Response Body: ${response.body}');
@@ -46,12 +49,11 @@ class DeliveryService {
       if (response.statusCode == 200) {
         try {
           final jsonData = jsonDecode(response.body);
-
-          // Backend returns 'success' boolean field
           if (jsonData['success'] == true) {
             return {
               'success': true,
-              'message': jsonData['message'] ?? 'Action completed successfully',
+              'message':
+              jsonData['message'] ?? 'Action completed successfully',
               'order_id': jsonData['order_id'] ?? orderId,
               'action': action,
               'data': jsonData['data'],
@@ -93,12 +95,13 @@ class DeliveryService {
     }
   }
 
-  /// ✅ NEW: Get active deliveries for delivery partner (Returns List<DeliveryModel>)
-  static Future<List<DeliveryModel>> getActiveDeliveries(String partnerId) async {
+  static Future<List<DeliveryModel>> getActiveDeliveries(
+      String partnerId) async {
     try {
       debugPrint('📋 Fetching active deliveries for partner: $partnerId');
 
-      final response = await http.post(
+      final response = await http
+          .post(
         Uri.parse('$baseUrl/delivery/get_active_orders.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -108,9 +111,11 @@ class DeliveryService {
         body: {
           'delivery_partner_id': partnerId,
         },
-      ).timeout(const Duration(seconds: 10));
+      )
+          .timeout(const Duration(seconds: 10));
 
-      debugPrint('📥 Active Deliveries Response Status: ${response.statusCode}');
+      debugPrint(
+          '📥 Active Deliveries Response Status: ${response.statusCode}');
       debugPrint('📥 Active Deliveries Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
@@ -118,14 +123,15 @@ class DeliveryService {
           final jsonData = jsonDecode(response.body);
           debugPrint('📥 Active Deliveries Parsed Data: $jsonData');
 
-          if (jsonData['success'] == true || jsonData['status'] == 'success') {
-            final List<dynamic> ordersJson = jsonData['orders'] ?? [];
-
+          if (jsonData['success'] == true ||
+              jsonData['status'] == 'success') {
+            final List ordersJson = jsonData['orders'] ?? [];
             debugPrint('📦 Found ${ordersJson.length} orders in response');
 
-            // Convert JSON to List<DeliveryModel>
-            final List<DeliveryModel> deliveries = ordersJson.map((orderJson) {
-              debugPrint('   📋 Parsing order: ${orderJson['order_id']} - Status: ${orderJson['status']}');
+            final List<DeliveryModel> deliveries =
+            ordersJson.map((orderJson) {
+              debugPrint(
+                  ' 📋 Parsing order: ${orderJson['order_id']} - Status: ${orderJson['status']}');
               return DeliveryModel.fromJson(orderJson);
             }).toList();
 
@@ -137,7 +143,7 @@ class DeliveryService {
           }
         } catch (e) {
           debugPrint('⚠️ JSON Parse Error: $e');
-          debugPrint('   Raw response: ${response.body}');
+          debugPrint(' Raw response: ${response.body}');
           return [];
         }
       } else {
@@ -184,6 +190,7 @@ class DeliveryService {
     required String deliveryPartnerId,
   }) async {
     debugPrint('📦 Marking order as picked up...');
+    // matches PHP case 'picked_up'
     return _updateStatus(
       action: 'picked_up',
       orderId: orderId,
@@ -219,7 +226,7 @@ class DeliveryService {
     );
   }
 
-  /// 6. Cancel Order
+  /// 6. Cancel Order  (only valid if you add PHP case 'cancelled')
   static Future<Map<String, dynamic>> cancelOrder({
     required String orderId,
     required String deliveryPartnerId,
@@ -235,14 +242,15 @@ class DeliveryService {
   }
 
   /// ✅ FIXED: Check for pending assignments for delivery partner
-  /// Backend returns: {success: true, has_pending: true, assignment: {...}}
+  /// Backend: {success: true, has_pending: true, assignment: {...}}
   static Future<Map<String, dynamic>> checkPendingAssignments(
       String partnerId,
       ) async {
     try {
       debugPrint('🔍 Checking pending assignments for partner: $partnerId');
 
-      final response = await http.post(
+      final response = await http
+          .post(
         Uri.parse('$baseUrl/delivery/get_pending_assignments.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -252,9 +260,11 @@ class DeliveryService {
         body: {
           'delivery_partner_id': partnerId,
         },
-      ).timeout(const Duration(seconds: 10));
+      )
+          .timeout(const Duration(seconds: 10));
 
-      debugPrint('📥 Pending Assignments Response Status: ${response.statusCode}');
+      debugPrint(
+          '📥 Pending Assignments Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         try {
@@ -262,11 +272,10 @@ class DeliveryService {
           debugPrint('📥 Pending Assignments Data: $jsonData');
 
           if (jsonData['success'] == true) {
-            // ✅ FIXED: Return has_pending and assignment (singular)
             return {
               'success': true,
               'has_pending': jsonData['has_pending'] ?? false,
-              'assignment': jsonData['assignment'], // Single assignment object
+              'assignment': jsonData['assignment'],
               'message': jsonData['message'],
             };
           } else {
@@ -312,7 +321,8 @@ class DeliveryService {
     try {
       debugPrint('🔄 Fetching new orders for partner: $deliveryPartnerId');
 
-      final response = await http.post(
+      final response = await http
+          .post(
         Uri.parse('$baseUrl/delivery/get_new_orders.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -322,7 +332,8 @@ class DeliveryService {
         body: {
           'delivery_partner_id': deliveryPartnerId,
         },
-      ).timeout(const Duration(seconds: 10));
+      )
+          .timeout(const Duration(seconds: 10));
 
       debugPrint('📥 New Orders Response Status: ${response.statusCode}');
 
@@ -330,7 +341,8 @@ class DeliveryService {
         try {
           final jsonData = jsonDecode(response.body);
 
-          if (jsonData['status'] == 'success' || jsonData['success'] == true) {
+          if (jsonData['status'] == 'success' ||
+              jsonData['success'] == true) {
             return {
               'success': true,
               'orders': jsonData['orders'] ?? [],
@@ -380,7 +392,8 @@ class DeliveryService {
     try {
       debugPrint('🔄 Fetching active orders for partner: $deliveryPartnerId');
 
-      final response = await http.post(
+      final response = await http
+          .post(
         Uri.parse('$baseUrl/delivery/get_active_orders.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -390,7 +403,8 @@ class DeliveryService {
         body: {
           'delivery_partner_id': deliveryPartnerId,
         },
-      ).timeout(const Duration(seconds: 10));
+      )
+          .timeout(const Duration(seconds: 10));
 
       debugPrint('📥 Active Orders Response: ${response.statusCode}');
 
@@ -398,7 +412,8 @@ class DeliveryService {
         try {
           final jsonData = jsonDecode(response.body);
 
-          if (jsonData['status'] == 'success' || jsonData['success'] == true) {
+          if (jsonData['status'] == 'success' ||
+              jsonData['success'] == true) {
             return {
               'success': true,
               'orders': jsonData['orders'] ?? [],
@@ -447,7 +462,8 @@ class DeliveryService {
     try {
       debugPrint('📜 Fetching order history for partner: $deliveryPartnerId');
 
-      final response = await http.post(
+      final response = await http
+          .post(
         Uri.parse('$baseUrl/delivery/get_order_history.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -458,7 +474,8 @@ class DeliveryService {
           'delivery_partner_id': deliveryPartnerId,
           if (limit != null) 'limit': limit.toString(),
         },
-      ).timeout(const Duration(seconds: 10));
+      )
+          .timeout(const Duration(seconds: 10));
 
       debugPrint('📥 Order History Response: ${response.statusCode}');
 
@@ -515,7 +532,8 @@ class DeliveryService {
     try {
       debugPrint('📊 Fetching partner stats: $deliveryPartnerId');
 
-      final response = await http.post(
+      final response = await http
+          .post(
         Uri.parse('$baseUrl/delivery/get_partner_stats.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -525,7 +543,8 @@ class DeliveryService {
         body: {
           'delivery_partner_id': deliveryPartnerId,
         },
-      ).timeout(const Duration(seconds: 10));
+      )
+          .timeout(const Duration(seconds: 10));
 
       debugPrint('📥 Partner Stats Response: ${response.statusCode}');
 
