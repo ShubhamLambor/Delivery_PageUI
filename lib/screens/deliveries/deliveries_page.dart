@@ -16,10 +16,9 @@ class DeliveriesPage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      // Use CustomScrollView to make the whole page scrollable including header
       body: CustomScrollView(
         slivers: [
-          // 1. Sliver for the Header
+          // 1. Header
           SliverToBoxAdapter(
             child: Container(
               padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
@@ -40,7 +39,14 @@ class DeliveriesPage extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Deliveries', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                      const Text(
+                        'Deliveries',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       IconButton(
                         onPressed: () {},
                         icon: const Icon(Icons.search, color: Colors.white),
@@ -48,24 +54,29 @@ class DeliveriesPage extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  // Stats Row
                   Container(
-                    padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                    padding:
+                    const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      border:
+                      Border.all(color: Colors.white.withOpacity(0.2)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _headerStatItem(context, '${controller.totalCount}', 'Total'),
+                        _headerStatItem(
+                            context, '${controller.totalCount}', 'Total'),
                         _verticalDivider(),
-                        _headerStatItem(context, '${controller.completedCount}', 'Done'),
+                        _headerStatItem(
+                            context, '${controller.completedCount}', 'Done'),
                         _verticalDivider(),
-                        _headerStatItem(context, '${controller.pendingCount}', 'Pending'),
+                        _headerStatItem(
+                            context, '${controller.pendingCount}', 'Pending'),
                         _verticalDivider(),
-                        _headerStatItem(context, '${controller.cancelledCount}', 'Failed'),
+                        _headerStatItem(
+                            context, '${controller.cancelledCount}', 'Failed'),
                       ],
                     ),
                   ),
@@ -74,13 +85,12 @@ class DeliveriesPage extends StatelessWidget {
             ),
           ),
 
-          // 2. Sliver for Filters (Pinned header effect optional, here it scrolls)
+          // 2. Filters + sort
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Column(
                 children: [
-                  // Filter Chips
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     clipBehavior: Clip.none,
@@ -97,31 +107,111 @@ class DeliveriesPage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  // Sort Buttons
                   Row(
                     children: [
+                      // Filter Date button
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () {},
-                          icon: const Icon(Icons.filter_list, size: 18),
-                          label: const Text('Filter Date'),
+                          onPressed: () async {
+                            final now = DateTime.now();
+                            final controller =
+                            context.read<DeliveriesController>();
+
+                            final picked = await showDateRangePicker(
+                              context: context,
+                              firstDate: DateTime(now.year - 1),
+                              lastDate: DateTime(now.year + 1),
+                              initialDateRange: controller.dateRange ??
+                                  DateTimeRange(
+                                    start:
+                                    now.subtract(const Duration(days: 7)),
+                                    end: now,
+                                  ),
+                            );
+                            // picked can be null => clear filter
+                            controller.setDateRange(picked);
+                          },
+                          icon:
+                          const Icon(Icons.filter_list, size: 18),
+                          label: Text(
+                            controller.dateRange == null
+                                ? 'Filter Date'
+                                : '${controller.dateRange!.start.day}/${controller.dateRange!.start.month}'
+                                ' - ${controller.dateRange!.end.day}/${controller.dateRange!.end.month}',
+                          ),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.grey[700],
                             side: BorderSide(color: Colors.grey.shade300),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 12),
+                      // Sort By button
                       Expanded(
                         child: OutlinedButton.icon(
-                          onPressed: () {},
+                          onPressed: () async {
+                            final controller =
+                            context.read<DeliveriesController>();
+                            const options = ['Newest', 'Oldest', 'Amount'];
+
+                            final selected =
+                            await showModalBottomSheet<String>(
+                              context: context,
+                              shape: const RoundedRectangleBorder(
+                                borderRadius: BorderRadius.vertical(
+                                  top: Radius.circular(20),
+                                ),
+                              ),
+                              builder: (context) {
+                                return SafeArea(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const SizedBox(height: 12),
+                                      const Text(
+                                        'Sort by',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      ...options.map(
+                                            (o) => ListTile(
+                                          title: Text(o),
+                                          trailing:
+                                          controller.sortBy == o
+                                              ? const Icon(
+                                            Icons.check,
+                                            color: Colors.green,
+                                          )
+                                              : null,
+                                          onTap: () =>
+                                              Navigator.pop(context, o),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+
+                            if (selected != null) {
+                              controller.setSortBy(selected);
+                            }
+                          },
                           icon: const Icon(Icons.sort, size: 18),
-                          label: const Text('Sort By'),
+                          label: Text('Sort: ${controller.sortBy}'),
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.grey[700],
                             side: BorderSide(color: Colors.grey.shade300),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -133,7 +223,7 @@ class DeliveriesPage extends StatelessWidget {
             ),
           ),
 
-          // 3. The List of Deliveries
+          // 3. List
           deliveries.isEmpty
               ? SliverFillRemaining(
             hasScrollBody: false,
@@ -143,17 +233,33 @@ class DeliveriesPage extends StatelessWidget {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(color: Colors.grey[100], shape: BoxShape.circle),
-                    child: Icon(Icons.inbox, size: 48, color: Colors.grey[400]),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[100],
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.inbox,
+                      size: 48,
+                      color: Colors.grey[400],
+                    ),
                   ),
                   const SizedBox(height: 16),
-                  Text('No deliveries found', style: TextStyle(color: Colors.grey[600], fontSize: 16)),
+                  Text(
+                    'No deliveries found',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 16,
+                    ),
+                  ),
                 ],
               ),
             ),
           )
               : SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                     (context, index) {
@@ -168,179 +274,249 @@ class DeliveriesPage extends StatelessWidget {
             ),
           ),
 
-          // Bottom padding
           const SliverToBoxAdapter(child: SizedBox(height: 20)),
         ],
       ),
     );
   }
+}
 
-  // --- Helpers ---
-  // (Keep all your existing helper methods below exactly as they were)
+// --- Helpers ---
 
-  Widget _headerStatItem(BuildContext context, String value, String label) {
-    return Column(
-      children: [
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
-      ],
-    );
-  }
-
-  Widget _verticalDivider() {
-    return Container(height: 24, width: 1, color: Colors.white.withOpacity(0.2));
-  }
-
-  Widget _chip(BuildContext context, String label) {
-    final controller = context.watch<DeliveriesController>();
-    final bool selected = controller.filter == label;
-
-    return GestureDetector(
-      onTap: () => controller.changeFilter(label),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 18),
-        decoration: BoxDecoration(
-          color: selected ? Colors.green : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: selected ? Colors.green : Colors.grey.shade300),
-          boxShadow: selected
-              ? [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))]
-              : [],
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: selected ? Colors.white : Colors.grey[700],
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            fontSize: 13,
-          ),
+Widget _headerStatItem(BuildContext context, String value, String label) {
+  return Column(
+    children: [
+      Text(
+        value,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
         ),
       ),
-    );
-  }
+      Text(
+        label,
+        style: TextStyle(
+          color: Colors.white.withOpacity(0.8),
+          fontSize: 12,
+        ),
+      ),
+    ],
+  );
+}
 
-  Widget _buildDeliveryCard(BuildContext context, DeliveryModel delivery) {
-    final statusColor = _getStatusColor(delivery.status);
-    final statusIcon = _getStatusIcon(delivery.status);
+Widget _verticalDivider() {
+  return Container(
+    height: 24,
+    width: 1,
+    color: Colors.white.withOpacity(0.2),
+  );
+}
 
-    return Container(
+Widget _chip(BuildContext context, String label) {
+  final controller = context.watch<DeliveriesController>();
+  final bool selected = controller.filter == label;
+
+  return GestureDetector(
+    onTap: () => controller.changeFilter(label),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
+        color: selected ? Colors.green : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: selected ? Colors.green : Colors.grey.shade300,
+        ),
+        boxShadow: selected
+            ? [
+          BoxShadow(
+            color: Colors.green.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ]
+            : [],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () {
-            showModalBottomSheet(
-              context: context,
-              backgroundColor: Colors.transparent,
-              builder: (_) => _DeliveryActionsSheet(deliveryId: delivery.id),
-            );
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                      child: Row(
-                        children: [
-                          Icon(statusIcon, size: 14, color: statusColor),
-                          const SizedBox(width: 4),
-                          Text(delivery.status, style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '₹${delivery.amount}',  // amount is already a String
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[800],
-                      ),
-                    ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: selected ? Colors.white : Colors.grey[700],
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          fontSize: 13,
+        ),
+      ),
+    ),
+  );
+}
 
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    const CircleAvatar(
-                      radius: 20,
-                      backgroundColor: Colors.grey,
-                      child: Icon(Icons.person, color: Colors.white),
+Widget _buildDeliveryCard(BuildContext context, DeliveryModel delivery) {
+  final statusColor = _getStatusColor(delivery.status);
+  final statusIcon = _getStatusIcon(delivery.status);
+
+  return Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.04),
+          blurRadius: 8,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            backgroundColor: Colors.transparent,
+            builder: (_) => _DeliveryActionsSheet(deliveryId: delivery.id),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(delivery.customerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                          const SizedBox(height: 2),
-                          Text(delivery.address, style: TextStyle(color: Colors.grey[600], fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ],
-                      ),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Divider(height: 1),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // SAFE SUBSTRING FIX INCLUDED HERE
-                    Text(
-                        'Order #${delivery.id.length >= 6 ? delivery.id.substring(0, 6) : delivery.id}',
-                        style: TextStyle(color: Colors.grey[500], fontSize: 12)
-                    ),
-                    Row(
+                    child: Row(
                       children: [
-                        Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+                        Icon(statusIcon, size: 14, color: statusColor),
                         const SizedBox(width: 4),
-                        Text(delivery.time, style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                        Text(
+                          delivery.status,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
-                    )
-                  ],
-                )
-              ],
-            ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '₹${delivery.amount}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Colors.grey,
+                    child: Icon(Icons.person, color: Colors.white),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          delivery.customerName,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          delivery.address,
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: 13,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Order #${delivery.id.length >= 6 ? delivery.id.substring(0, 6) : delivery.id}',
+                    style: TextStyle(
+                      color: Colors.grey[500],
+                      fontSize: 12,
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Icon(Icons.access_time,
+                          size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        delivery.time,
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
-  Color _getStatusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed': return Colors.green;
-      case 'cancelled': return Colors.red;
-      case 'pending': return Colors.orange;
-      default: return Colors.blue;
-    }
+Color _getStatusColor(String status) {
+  switch (status.toLowerCase()) {
+    case 'completed':
+      return Colors.green;
+    case 'cancelled':
+      return Colors.red;
+    case 'pending':
+      return Colors.orange;
+    default:
+      return Colors.blue;
   }
+}
 
-  IconData _getStatusIcon(String status) {
-    switch (status.toLowerCase()) {
-      case 'completed': return Icons.check_circle;
-      case 'cancelled': return Icons.cancel;
-      default: return Icons.access_time;
-    }
+IconData _getStatusIcon(String status) {
+  switch (status.toLowerCase()) {
+    case 'completed':
+      return Icons.check_circle;
+    case 'cancelled':
+      return Icons.cancel;
+    default:
+      return Icons.access_time;
   }
 }
 
 class _DeliveryActionsSheet extends StatelessWidget {
   final String deliveryId;
-
   const _DeliveryActionsSheet({required this.deliveryId});
 
   @override
@@ -357,12 +533,29 @@ class _DeliveryActionsSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const SizedBox(height: 8),
-            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
             const SizedBox(height: 20),
-            const Text('Update Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text(
+              'Update Status',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 20),
             ListTile(
-              leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.check, color: Colors.green)),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.check, color: Colors.green),
+              ),
               title: const Text('Mark as Completed'),
               onTap: () {
                 controller.markCompleted(deliveryId);
@@ -370,7 +563,14 @@ class _DeliveryActionsSheet extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.close, color: Colors.red)),
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.close, color: Colors.red),
+              ),
               title: const Text('Mark as Cancelled'),
               onTap: () {
                 controller.markCancelled(deliveryId);

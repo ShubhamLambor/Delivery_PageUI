@@ -1,29 +1,18 @@
 // lib/screens/profile/widgets/profile_header.dart
-import 'dart:io';
 
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import '../../auth/auth_controller.dart';
+import '../profile_controller.dart';
 
 class ProfileHeader extends StatelessWidget {
-  final String memberSince;
-  final String location;
-  final VoidCallback? onChangePhoto;
+  final ProfileController controller;
 
-  const ProfileHeader({
-    super.key,
-    required this.memberSince,
-    required this.location,
-    this.onChangePhoto,
-  });
+  const ProfileHeader({super.key, required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthController>();
-    final user = auth.user;
-
-    final String name = user?.name ?? 'Delivery Partner';
-    final String? imageUrl = user?.profilePic;
+    final String name = controller.name.isNotEmpty ? controller.name : 'Delivery Partner';
+    final String? imageUrl = controller.profilePhotoUrl;
 
     ImageProvider avatarProvider;
     if (imageUrl == null || imageUrl.isEmpty) {
@@ -35,43 +24,73 @@ class ProfileHeader extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Avatar with Camera Button
           Stack(
             children: [
-              CircleAvatar(
-                radius: 35,
-                backgroundImage: avatarProvider,
+              Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.green.withOpacity(0.2),
+                    width: 2,
+                  ),
+                ),
+                child: CircleAvatar(
+                  radius: 32,
+                  backgroundColor: Colors.grey[200],
+                  backgroundImage: avatarProvider,
+                ),
               ),
-              if (onChangePhoto != null)
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: InkWell(
-                    onTap: onChangePhoto,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.orange,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.camera_alt,
-                        size: 16,
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: GestureDetector(
+                  onTap: () => controller.changeProfilePhoto(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                      border: Border.all(
                         color: Colors.white,
+                        width: 2,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.green.withOpacity(0.3),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.camera_alt,
+                      size: 14,
+                      color: Colors.white,
                     ),
                   ),
                 ),
+              ),
             ],
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
+
+          // User Info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -79,29 +98,51 @@ class ProfileHeader extends StatelessWidget {
                 Text(
                   name,
                   style: const TextStyle(
-                    fontSize: 20,
+                    fontSize: 17,
                     fontWeight: FontWeight.bold,
+                    color: Colors.black87,
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Member since $memberSince',
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.location_on,
-                      size: 14,
-                      color: Colors.grey,
+                    Icon(
+                      Icons.calendar_today,
+                      size: 11,
+                      color: Colors.grey[600],
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      location,
-                      style: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 12,
+                      'Member since Jan 2024',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.phone,
+                      size: 11,
+                      color: Colors.grey[600],
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        controller.phone.isNotEmpty
+                            ? controller.phone
+                            : '6586461664',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 11,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],

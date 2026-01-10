@@ -7,10 +7,11 @@ import 'package:provider/provider.dart';
 import '../home/home_page.dart';
 import '../deliveries/deliveries_page.dart';
 import '../earnings/earnings_page.dart';
-import '../profile/profile_page.dart';
 import 'nav_controller.dart';
 import '../auth/auth_controller.dart';
 import '../kyc/kyc_popup_dialog.dart';
+import 'package:deliveryui/screens/profile/profile_page.dart';
+
 
 class BottomNav extends StatefulWidget {
   const BottomNav({super.key});
@@ -22,12 +23,13 @@ class BottomNav extends StatefulWidget {
 class _BottomNavState extends State<BottomNav> {
   static bool _hasShownKycPopup = false;
 
-  final List<Widget> _pages = const [
-    HomePage(),
-    DeliveriesPage(),
-    EarningsPage(),
-    ProfilePage(),
+  final List<Widget> _pages = [
+    const HomePage(),
+    const DeliveriesPage(),
+    const EarningsPage(),
+    const ProfilePage(),
   ];
+
 
   @override
   void initState() {

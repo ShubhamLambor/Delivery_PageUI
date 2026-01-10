@@ -3,6 +3,8 @@ import '../screens/deliveries/deliveries_page.dart';
 import '../screens/earnings/earnings_page.dart';
 import '../screens/home/home_page.dart';
 import '../screens/profile/profile_page.dart';
+import 'package:deliveryui/screens/profile/profile_page.dart';
+
 
 
 class DeliveryShell extends StatefulWidget {
@@ -15,11 +17,11 @@ class DeliveryShell extends StatefulWidget {
 class _DeliveryShellState extends State<DeliveryShell> {
   int _index = 0;
 
-  final List<Widget> _pages = const [
-    HomePage(),
-    DeliveriesPage(),
-    EarningsPage(),
-    ProfilePage(),
+  final List<Widget> _pages = [
+    const HomePage(),
+    const DeliveriesPage(),
+    const EarningsPage(),
+    const ProfilePage(),
   ];
 
   @override

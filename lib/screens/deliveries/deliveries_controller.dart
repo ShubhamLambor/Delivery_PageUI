@@ -26,34 +26,94 @@ class DeliveriesController extends ChangeNotifier {
 
   List<DeliveryModel> get _all => _repo.getAllDeliveries();
 
+  /// ---------- NEW: date + sort state ----------
+  DateTimeRange? _dateRange;
+  String _sortBy = 'Newest'; // 'Newest', 'Oldest', 'Amount'
+
+  DateTimeRange? get dateRange => _dateRange;
+  String get sortBy => _sortBy;
+
+  void setDateRange(DateTimeRange? range) {
+    _dateRange = range;
+    notifyListeners();
+  }
+
+  void setSortBy(String value) {
+    _sortBy = value;
+    notifyListeners();
+  }
+  /// --------------------------------------------
+
   /// Map backend status to UI status groups
   /// Backend examples:
-  /// - 'pending', 'out_for_delivery', 'picked_up'  -> 'Pending'
-  /// - 'delivered'                                  -> 'Completed'
-  /// - 'cancelled'                                  -> 'Cancelled'
-  /// - 'assigned/created'                           -> 'New'
+  /// - 'pending', 'out_for_delivery', 'picked_up' -> 'Pending'
+  /// - 'delivered' -> 'Completed'
+  /// - 'cancelled' -> 'Cancelled'
+  /// - 'assigned/created' -> 'New'
   String _normalizeStatus(String backendStatus) {
     final s = backendStatus.toLowerCase();
-
     if (s == 'delivered') return 'Completed';
     if (s == 'cancelled' || s == 'canceled') return 'Cancelled';
     if (s == 'pending' || s == 'out_for_delivery' || s == 'picked_up') {
       return 'Pending';
     }
     if (s == 'assigned' || s == 'created') return 'New';
-
     // Fallback to original text if unknown
     return backendStatus;
   }
 
-  /// List exposed to UI, filtered by current tab
+  /// List exposed to UI, filtered by current tab + date + sort
   List<DeliveryModel> get filteredDeliveries {
-    if (_filter == 'All') return _all;
+    Iterable<DeliveryModel> list = _all;
 
-    return _all.where((d) {
-      final normalized = _normalizeStatus(d.status);
-      return normalized == _filter;
-    }).toList();
+    // status tab filter
+    if (_filter != 'All') {
+      list = list.where((d) {
+        final normalized = _normalizeStatus(d.status);
+        return normalized == _filter;
+      });
+    }
+
+    // date range filter (expects delivery.time as ISO or parsable string)
+    if (_dateRange != null) {
+      list = list.where((d) {
+        final dt = DateTime.tryParse(d.time ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0);
+        return !dt.isBefore(_dateRange!.start) &&
+            !dt.isAfter(_dateRange!.end);
+      });
+    }
+
+    // sort
+    List<DeliveryModel> sorted = List.of(list);
+    switch (_sortBy) {
+      case 'Oldest':
+        sorted.sort((a, b) {
+          final da = DateTime.tryParse(a.time ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          final db = DateTime.tryParse(b.time ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          return da.compareTo(db);
+        });
+        break;
+      case 'Amount':
+        sorted.sort((a, b) {
+          final aa = double.tryParse(a.amount ?? '') ?? 0;
+          final ab = double.tryParse(b.amount ?? '') ?? 0;
+          return ab.compareTo(aa); // high to low
+        });
+        break;
+      default: // 'Newest'
+        sorted.sort((a, b) {
+          final da = DateTime.tryParse(a.time ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          final db = DateTime.tryParse(b.time ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          return db.compareTo(da);
+        });
+    }
+
+    return sorted;
   }
 
   /// Get new orders that need acceptance (optional usage)
@@ -62,16 +122,12 @@ class DeliveriesController extends ChangeNotifier {
   }
 
   int get totalCount => _all.length;
-
   int get newCount =>
       _all.where((d) => _normalizeStatus(d.status) == 'New').length;
-
   int get pendingCount =>
       _all.where((d) => _normalizeStatus(d.status) == 'Pending').length;
-
   int get completedCount =>
       _all.where((d) => _normalizeStatus(d.status) == 'Completed').length;
-
   int get cancelledCount =>
       _all.where((d) => _normalizeStatus(d.status) == 'Cancelled').length;
 
@@ -103,7 +159,7 @@ class DeliveriesController extends ChangeNotifier {
       eta: delivery.eta,
       amount: delivery.amount,
       time: delivery.time,
-      status: newStatus, // this is UI-normalized status (Pending/Completed/...)
+      status: newStatus, // UI-normalized status
     );
 
     _repo.addOrUpdateOrder(updated);
@@ -127,24 +183,15 @@ class DeliveriesController extends ChangeNotifier {
       }
 
       debugPrint('🔄 Fetching deliveries for partner: $deliveryPartnerId');
+      _repo.clearDeliveries();
 
-      // Clear or reset repository if you want fresh data only
-
-      _repo.clearDeliveries(); // ensure this exists in your repository
-
-      // Fetch new orders
       await fetchNewOrders();
-
-      // Fetch active orders
       await fetchActiveOrders();
-
-      // Fetch order history (optional)
       // await fetchOrderHistory();
 
       _isLoading = false;
       _errorMessage = null;
       notifyListeners();
-
       debugPrint('✅ All deliveries fetched successfully');
       debugPrint(' Total orders: ${_repo.realDeliveryCount}');
     } catch (e) {
@@ -170,7 +217,6 @@ class DeliveriesController extends ChangeNotifier {
         final orders = result['orders'] as List? ?? [];
         debugPrint('✅ Fetched ${result['count']} active orders');
 
-        // ✅ SAVE TO REPOSITORY
         for (var orderData in orders) {
           try {
             final delivery = DeliveryModel.fromJson(orderData);
@@ -180,6 +226,7 @@ class DeliveriesController extends ChangeNotifier {
             debugPrint(' ⚠️ Error parsing order: $e');
           }
         }
+
         notifyListeners();
       }
     } catch (e) {
@@ -202,7 +249,6 @@ class DeliveriesController extends ChangeNotifier {
         final orders = result['orders'] as List? ?? [];
         debugPrint('✅ Fetched ${result['count']} new orders');
 
-        // ✅ SAVE TO REPOSITORY
         for (var orderData in orders) {
           try {
             final delivery = DeliveryModel.fromJson(orderData);
@@ -212,6 +258,7 @@ class DeliveriesController extends ChangeNotifier {
             debugPrint(' ⚠️ Error parsing order: $e');
           }
         }
+
         notifyListeners();
       }
     } catch (e) {
@@ -235,7 +282,6 @@ class DeliveriesController extends ChangeNotifier {
         final orders = result['orders'] as List? ?? [];
         debugPrint('✅ Fetched ${result['count']} historical orders');
 
-        // ✅ SAVE TO REPOSITORY
         for (var orderData in orders) {
           try {
             final delivery = DeliveryModel.fromJson(orderData);
@@ -244,6 +290,7 @@ class DeliveriesController extends ChangeNotifier {
             debugPrint(' ⚠️ Error parsing history order: $e');
           }
         }
+
         notifyListeners();
       }
     } catch (e) {
@@ -301,10 +348,8 @@ class DeliveriesController extends ChangeNotifier {
 
       _isLoading = false;
       if (result['success'] == true) {
-        // UI side: show as Pending (backend: out_for_delivery)
         _updateStatus(orderId, 'Pending');
         _errorMessage = null;
-
         await fetchDeliveries();
         notifyListeners();
         return true;
@@ -348,7 +393,6 @@ class DeliveriesController extends ChangeNotifier {
       if (result['success'] == true) {
         _repo.removeDelivery(orderId);
         _errorMessage = null;
-
         await fetchDeliveries();
         notifyListeners();
         return true;
@@ -388,13 +432,13 @@ class DeliveriesController extends ChangeNotifier {
 
       _isLoading = false;
       if (result['success'] == true) {
-        // picked_up still grouped as Pending in UI
         _updateStatus(orderId, 'Pending');
         await fetchDeliveries();
         notifyListeners();
         return true;
       } else {
-        _errorMessage = result['message'] ?? 'Failed to mark as picked up';
+        _errorMessage =
+            result['message'] ?? 'Failed to mark as picked up';
         notifyListeners();
         return false;
       }
@@ -429,13 +473,13 @@ class DeliveriesController extends ChangeNotifier {
 
       _isLoading = false;
       if (result['success'] == true) {
-        // backend: delivered, UI: Completed
         _updateStatus(orderId, 'Completed');
         await fetchDeliveries();
         notifyListeners();
         return true;
       } else {
-        _errorMessage = result['message'] ?? 'Failed to mark as delivered';
+        _errorMessage =
+            result['message'] ?? 'Failed to mark as delivered';
         notifyListeners();
         return false;
       }
