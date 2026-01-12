@@ -6,6 +6,7 @@ class UserModel {
   final String email;
   final String phone;
   final String profilePic;
+  final DateTime? createdAt;
   final String role;
   final String? vehicleNumber;
   final bool isEmailVerified;
@@ -17,6 +18,7 @@ class UserModel {
     required this.email,
     required this.phone,
     required this.profilePic,
+    this.createdAt, // ✅ Fixed: removed 'final DateTime?'
     this.role = 'delivery',
     this.vehicleNumber,
     this.isEmailVerified = false,
@@ -42,12 +44,23 @@ class UserModel {
           json['is_phone_verified'] == '1';
     }
 
+    // ✅ Parse createdAt from backend
+    DateTime? parsedCreatedAt;
+    if (json['created_at'] != null) {
+      try {
+        parsedCreatedAt = DateTime.parse(json['created_at'].toString());
+      } catch (e) {
+        print('Error parsing created_at: $e');
+      }
+    }
+
     return UserModel(
       id: json['uid']?.toString() ?? json['id']?.toString() ?? '',
       name: json['name'] ?? "",
       email: json['email'] ?? "",
       phone: json['phone'] ?? "",
       profilePic: json['profilePic'] ?? json['profile_pic'] ?? "",
+      createdAt: parsedCreatedAt, // ✅ Added this
       role: parsedRole,
       vehicleNumber: json['vehicle_number']?.toString(),
       isEmailVerified: emailVerified,
@@ -62,6 +75,7 @@ class UserModel {
       "email": email,
       "phone": phone,
       "profilePic": profilePic,
+      "createdAt": createdAt?.toIso8601String(), // ✅ Added this
       "role": role,
       "isEmailVerified": isEmailVerified,
       "isPhoneVerified": isPhoneVerified,
@@ -75,6 +89,7 @@ class UserModel {
     String? email,
     String? phone,
     String? profilePic,
+    DateTime? createdAt, // ✅ Added this
     String? role,
     String? vehicleNumber,
     bool? isEmailVerified,
@@ -86,6 +101,7 @@ class UserModel {
       email: email ?? this.email,
       phone: phone ?? this.phone,
       profilePic: profilePic ?? this.profilePic,
+      createdAt: createdAt ?? this.createdAt, // ✅ Added this
       role: role ?? this.role,
       vehicleNumber: vehicleNumber ?? this.vehicleNumber,
       isEmailVerified: isEmailVerified ?? this.isEmailVerified,
@@ -145,9 +161,21 @@ class UserModel {
     }
   }
 
+  // ✅ NEW: Format registration date for display
+  String get memberSince {
+    if (createdAt == null) return 'Member since Jan 2024';
+
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+
+    return 'Member since ${months[createdAt!.month - 1]} ${createdAt!.year}';
+  }
+
   @override
   String toString() {
-    return 'UserModel(id: $id, name: $name, email: $email, phone: $phone, role: $role, emailVerified: $isEmailVerified, phoneVerified: $isPhoneVerified)';
+    return 'UserModel(id: $id, name: $name, email: $email, phone: $phone, role: $role, createdAt: $createdAt, emailVerified: $isEmailVerified, phoneVerified: $isPhoneVerified)';
   }
 
   @override
@@ -159,6 +187,7 @@ class UserModel {
         other.email == email &&
         other.phone == phone &&
         other.profilePic == profilePic &&
+        other.createdAt == createdAt && // ✅ Added this
         other.role == role &&
         other.vehicleNumber == vehicleNumber &&
         other.isEmailVerified == isEmailVerified &&
@@ -172,6 +201,7 @@ class UserModel {
     email.hashCode ^
     phone.hashCode ^
     profilePic.hashCode ^
+    createdAt.hashCode ^ // ✅ Added this
     role.hashCode ^
     vehicleNumber.hashCode ^
     isEmailVerified.hashCode ^

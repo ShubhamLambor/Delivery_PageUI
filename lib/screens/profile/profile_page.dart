@@ -2,15 +2,30 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import '../../core/locale_provider.dart';
 import 'profile_controller.dart';
 import 'widgets/profile_header.dart';
 import 'widgets/logout_button.dart';
 import 'pages/profile_pages.dart';
 
-class ProfilePage extends StatelessWidget {
+// ✅ Changed to StatefulWidget
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  @override
+  void initState() {
+    super.initState();
+    // ✅ Refresh user data every time profile page opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final controller = context.read<ProfileController>();
+      controller.refreshUserData();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

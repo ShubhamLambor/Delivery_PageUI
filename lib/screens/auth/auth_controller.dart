@@ -93,60 +93,67 @@ class AuthController extends ChangeNotifier {
 
   /// LOGIN: Authenticates with Backend API
   Future<bool> login(String email, String password) async {
-    print('\n════════════════════════════════════════');
+    print('');
+    print('═══════════════════════════════════════');
     print('🔐 [AUTH_CONTROLLER] Starting login...');
-    print('════════════════════════════════════════');
-    print(' Email: $email');
+    print('═══════════════════════════════════════');
+    print('📧 Email: $email');
 
     _loading = true;
     _error = null;
     notifyListeners();
 
     try {
-      final user = await _userRepo.login(email: email, password: password);
-      print('📋 [AUTH_CONTROLLER] Login response received');
-      print(' User ID: ${user.id}');
-      print(' User Name: ${user.name}');
-      print(' User Email: ${user.email}');
-      print(' User Phone: ${user.phone}');
-      print(' User Role: ${user.role}');
+      final loggedInUser = await _userRepo.login(email: email, password: password); // ✅ Renamed variable
 
-      if (user.id.isEmpty) {
-        print('❌ [AUTH_CONTROLLER] CRITICAL ERROR: User ID is empty!');
+      print('[AUTH_CONTROLLER] Login response received');
+      print('  User ID: ${loggedInUser.id}');
+      print('  User Name: ${loggedInUser.name}');
+      print('  User Email: ${loggedInUser.email}');
+      print('  User Phone: ${loggedInUser.phone}');
+      print('  User Role: ${loggedInUser.role}');
+
+      if (loggedInUser.id.isEmpty) {
+        print('[AUTH_CONTROLLER] ❌ CRITICAL ERROR: User ID is empty!');
         _loading = false;
         _error = 'Login failed: Invalid user data from server';
         notifyListeners();
         return false;
       }
 
-      _user = user;
+      // ✅ Now this correctly assigns to the class field
+      _user = loggedInUser;
 
       // SAVE SESSION
-      print('💾 [AUTH_CONTROLLER] Saving user session to SharedPreferences...');
+      print('[AUTH_CONTROLLER] Saving user session to SharedPreferences...');
       final prefs = await SharedPreferences.getInstance();
+
       await prefs.setBool('isLoggedIn', true);
-      await prefs.setString('userId', user.id);
-      await prefs.setString('userEmail', user.email);
-      await prefs.setString('userName', user.name);
-      await prefs.setString('userPhone', user.phone);
-      await prefs.setString('userProfilePic', user.profilePic);
-      await prefs.setString('userRole', user.role);
+      await prefs.setString('userId', loggedInUser.id);
+      await prefs.setString('userEmail', loggedInUser.email);
+      await prefs.setString('userName', loggedInUser.name);
+      await prefs.setString('userPhone', loggedInUser.phone);
+      await prefs.setString('userProfilePic', loggedInUser.profilePic);
+      await prefs.setString('userRole', loggedInUser.role);
 
       final savedUserId = prefs.getString('userId');
-      print(' Verification - Saved User ID: $savedUserId');
+      print('✅ Verification - Saved User ID: $savedUserId');
 
-      _userRepo.restoreUserSession(_user!);
+      _userRepo.restoreUserSession(loggedInUser);
+
       _loading = false;
       _error = null;
       _initialized = true;
       notifyListeners();
 
-      print('✅ [AUTH_CONTROLLER] Login successful!');
-      print(' Session saved with User ID: ${user.id}');
-      print('════════════════════════════════════════\n');
+      print('[AUTH_CONTROLLER] ✅ Login successful!');
+      print('  Session saved with User ID: ${loggedInUser.id}');
+      print('═══════════════════════════════════════');
+
       return true;
     } catch (e) {
       _loading = false;
+
       String errorMsg = e.toString();
       if (errorMsg.startsWith('Exception:')) {
         errorMsg = errorMsg.replaceFirst('Exception:', '').trim();
@@ -154,13 +161,17 @@ class AuthController extends ChangeNotifier {
       if (errorMsg.startsWith('Login failed:')) {
         errorMsg = errorMsg.replaceFirst('Login failed:', '').trim();
       }
+
       _error = errorMsg;
       notifyListeners();
-      print('❌ [AUTH_CONTROLLER] Login failed: $errorMsg');
-      print('════════════════════════════════════════\n');
+
+      print('[AUTH_CONTROLLER] ❌ Login failed: $errorMsg');
+      print('═══════════════════════════════════════');
+
       return false;
     }
   }
+
 
   /// BASIC SIGNUP
   Future<bool> signupBasic({

@@ -4,12 +4,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../models/user_model.dart';
 import 'dummy_data.dart';
 
 class UserRepository {
   static const String baseUrl = "https://svtechshant.com/tiffin/api";
+
   final String loginUrl;
   final String registerUrl;
   final String kycUrl;
@@ -50,10 +51,46 @@ class UserRepository {
     return DummyData.user;
   }
 
+  // ✅ UPDATED: Always fetch fresh data from SharedPreferences
   Future<UserModel> getUserProfile() async {
-    print('📋 [GET_PROFILE] Fetching user profile');
-    await Future.delayed(const Duration(milliseconds: 500));
-    return DummyData.user;
+    print('[GETPROFILE] Fetching user profile...');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getString('userId') ?? '';
+      final userName = prefs.getString('userName') ?? '';
+      final userEmail = prefs.getString('userEmail') ?? '';
+      final userPhone = prefs.getString('userPhone') ?? '';
+      final userProfilePic = prefs.getString('userProfilePic') ?? '';
+      final userRole = prefs.getString('userRole') ?? 'delivery';
+
+      if (userId.isEmpty) {
+        print('[GETPROFILE] ❌ No user logged in');
+        throw Exception('User not logged in');
+      }
+
+      print('[GETPROFILE] Loaded from SharedPreferences:');
+      print('  ID: $userId');
+      print('  Name: $userName');
+      print('  Email: $userEmail');
+
+      // ✅ Update DummyData with fresh SharedPreferences data
+      DummyData.user = UserModel(
+        id: userId,
+        name: userName,
+        email: userEmail,
+        phone: userPhone,
+        profilePic: userProfilePic,
+        role: userRole,
+      );
+
+      await Future.delayed(const Duration(milliseconds: 500));
+      return DummyData.user;
+
+    } catch (e) {
+      print('[GETPROFILE] ❌ Error: $e');
+      rethrow;
+    }
   }
 
   Future<void> logout() async {
@@ -111,7 +148,6 @@ class UserRepository {
 
     try {
       print('⏳ [UPDATE_EMAIL] Sending POST request...');
-
       final response = await http.post(
         uri,
         headers: {
@@ -137,17 +173,14 @@ class UserRepository {
       }
 
       final data = jsonDecode(response.body);
-
       if (data['success'] == false) {
         throw Exception(data['message'] ?? 'Failed to update email');
       }
 
       // Update local user data
       DummyData.user = DummyData.user.copyWith(email: newEmail);
-
       print('✅ [UPDATE_EMAIL] Email updated successfully!');
       print('════════════════════════════════════════\n');
-
     } on SocketException catch (e) {
       print('❌ [UPDATE_EMAIL] Network Error: $e');
       throw Exception('Network error. Please check your internet connection.');
@@ -185,7 +218,6 @@ class UserRepository {
 
     try {
       print('⏳ [UPDATE_PHONE] Sending POST request...');
-
       final response = await http.post(
         uri,
         headers: {
@@ -211,17 +243,14 @@ class UserRepository {
       }
 
       final data = jsonDecode(response.body);
-
       if (data['success'] == false) {
         throw Exception(data['message'] ?? 'Failed to update phone');
       }
 
       // Update local user data
       DummyData.user = DummyData.user.copyWith(phone: newPhone);
-
       print('✅ [UPDATE_PHONE] Phone updated successfully!');
       print('════════════════════════════════════════\n');
-
     } on SocketException catch (e) {
       print('❌ [UPDATE_PHONE] Network Error: $e');
       throw Exception('Network error. Please check your internet connection.');
@@ -264,7 +293,6 @@ class UserRepository {
 
     try {
       print('⏳ [SEND_OTP] Sending POST request...');
-
       final response = await http.post(
         uri,
         headers: {
@@ -290,14 +318,12 @@ class UserRepository {
       }
 
       final data = jsonDecode(response.body);
-
       if (data['success'] == false) {
         throw Exception(data['message'] ?? 'Failed to send OTP');
       }
 
       print('✅ [SEND_OTP] OTP sent successfully!');
       print('════════════════════════════════════════\n');
-
     } on SocketException catch (e) {
       print('❌ [SEND_OTP] Network Error: $e');
       throw Exception('Network error. Please check your internet connection.');
@@ -343,7 +369,6 @@ class UserRepository {
 
     try {
       print('⏳ [VERIFY_OTP] Sending POST request...');
-
       final response = await http.post(
         uri,
         headers: {
@@ -369,16 +394,13 @@ class UserRepository {
       }
 
       final data = jsonDecode(response.body);
-
       if (data['success'] == false) {
         throw Exception(data['message'] ?? 'Invalid OTP');
       }
 
       print('✅ [VERIFY_OTP] OTP verified successfully!');
       print('════════════════════════════════════════\n');
-
       return true;
-
     } on SocketException catch (e) {
       print('❌ [VERIFY_OTP] Network Error: $e');
       throw Exception('Network error. Please check your internet connection.');
@@ -407,7 +429,6 @@ class UserRepository {
 
     try {
       print('⏳ [LOGIN] Sending POST request...');
-
       final response = await http.post(
         uri,
         headers: {
@@ -483,7 +504,6 @@ class UserRepository {
       // ✅ Parse user ID as String
       print('🔢 [LOGIN] Parsing user ID...');
       String userId = '';
-
       if (userData['uid'] != null) {
         print('   Found uid: ${userData['uid']}');
         userId = userData['uid'].toString();
@@ -509,7 +529,6 @@ class UserRepository {
       // ✅ Parse role from response
       print('🔑 [LOGIN] Parsing user role...');
       String userRole = userData['role']?.toString() ?? '';
-
       if (userRole.isEmpty) {
         userRole = 'delivery';
         print('⚠️ [LOGIN] Role was empty, using fallback: $userRole');
@@ -540,11 +559,10 @@ class UserRepository {
 
       DummyData.user = user;
       print('💾 [LOGIN] User saved to DummyData');
+
       print('✅ [LOGIN] Login successful!');
       print('════════════════════════════════════════\n');
-
       return user;
-
     } on SocketException catch (e) {
       print('❌ [LOGIN] SocketException caught');
       print('   Error: $e');
@@ -580,8 +598,8 @@ class UserRepository {
     print('════════════════════════════════════════');
 
     clearUser();
-    final uri = Uri.parse(registerUrl);
 
+    final uri = Uri.parse(registerUrl);
     print('🔍 [SIGNUP] Role parameter analysis:');
     print('   Role value: "$role"');
     print('   Role type: ${role.runtimeType}');
@@ -602,7 +620,6 @@ class UserRepository {
 
     try {
       print('⏳ [SIGNUP] Sending POST request...');
-
       final response = await http.post(
         uri,
         headers: {
@@ -665,7 +682,6 @@ class UserRepository {
 
       print('✅ [SIGNUP] Registration successful!');
       print('════════════════════════════════════════\n');
-
     } on SocketException catch (e) {
       print('❌ [SIGNUP] Network Error: $e');
       throw Exception('Network error. Please check your internet connection.');
@@ -763,7 +779,6 @@ class UserRepository {
 
     try {
       print('⏳ [KYC] Sending POST request...');
-
       final response = await http.post(
         uri,
         headers: {
@@ -799,7 +814,6 @@ class UserRepository {
 
       if (response.statusCode != 200 && response.statusCode != 201) {
         print('❌ [KYC] Non-success status code: ${response.statusCode}');
-
         try {
           final data = jsonDecode(response.body);
           final errorMsg = data['error']?.toString() ??
@@ -829,7 +843,6 @@ class UserRepository {
       print('✅ [KYC] Submitted Successfully!');
       print('📝 [KYC] Response: ${data['message'] ?? 'Success'}');
       print('════════════════════════════════════════\n');
-
     } on SocketException catch (e) {
       print('❌ [KYC] SocketException: $e');
       throw Exception('Network error. Please check your internet connection.');
