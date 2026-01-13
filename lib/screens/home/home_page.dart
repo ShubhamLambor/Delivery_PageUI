@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../delivery/order_tracking_screen.dart';
 import 'home_controller.dart';
 import '../../screens/home/widgets/current_delivery_card.dart';
 import '../../screens/home/widgets/new_order_card.dart';
@@ -288,8 +289,7 @@ class _HomePageState extends State<HomePage> {
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor:
-                    AlwaysStoppedAnimation<Color>(Colors.white),
+                    valueColor: AlwaysStoppedAnimation(Colors.white),
                   ),
                 ),
                 SizedBox(width: 16),
@@ -326,20 +326,31 @@ class _HomePageState extends State<HomePage> {
           );
 
           debugPrint('🔄 Refreshing deliveries after accept...');
+
           try {
-            final deliveriesController =
-            context.read<DeliveriesController>();
+            final deliveriesController = context.read<DeliveriesController>();
             await deliveriesController.fetchDeliveries();
             debugPrint('✅ DeliveriesController refreshed');
           } catch (e) {
-            debugPrint(
-                '⚠️ DeliveriesController not found: $e');
+            debugPrint('⚠️ DeliveriesController not found: $e');
           }
 
           final homeController = context.read<HomeController>();
           await homeController.fetchDeliveries();
           debugPrint('✅ HomeController refreshed');
           setState(() {});
+
+          // ✅ ADD: Navigate to OrderTrackingScreen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OrderTrackingScreen(
+                orderId: orderId,
+                deliveryPartnerId: partnerId,
+              ),
+            ),
+          );
+
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -348,8 +359,7 @@ class _HomePageState extends State<HomePage> {
                   const Icon(Icons.error, color: Colors.white),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Text(result['message'] ??
-                        'Failed to accept order'),
+                    child: Text(result['message'] ?? 'Failed to accept order'),
                   ),
                 ],
               ),
@@ -383,6 +393,7 @@ class _HomePageState extends State<HomePage> {
       }
     }
   }
+
 
   /// Handle reject from dialog
   Future<void> _handleRejectFromDialog(
