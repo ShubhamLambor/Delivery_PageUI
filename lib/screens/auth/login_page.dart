@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../nav/bottom_nav.dart';
+import '../deliveries/deliveries_controller.dart';
+import '../home/home_controller.dart';
 import 'auth_controller.dart';
 import 'signup_page.dart';
 import 'widgets/login_form.dart';
@@ -16,16 +18,37 @@ class LoginPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<AuthController>();
 
-    // We no longer need Scaffold here because LoginForm provides the full page structure
     return LoginForm(
       loading: controller.loading,
       onSubmit: (email, password) async {
         final success = await controller.login(email, password);
+
         if (success) {
           if (!context.mounted) return;
 
+          // ✅ Save login state
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isLoggedIn', true);
+
+          // ✅ FIXED: Force refresh controllers with new user ID
+          final newUserId = controller.getCurrentUserId();
+          if (newUserId != null) {
+            debugPrint('🔄 [LOGIN] Refreshing controllers for user: $newUserId');
+
+            try {
+              // Refresh HomeController
+              final homeController = context.read<HomeController>();
+              await homeController.initialize(newUserId);
+              debugPrint('✅ [LOGIN] HomeController refreshed');
+
+              // Refresh DeliveriesController
+              final deliveriesController = context.read<DeliveriesController>();
+              await deliveriesController.fetchDeliveries();
+              debugPrint('✅ [LOGIN] DeliveriesController refreshed');
+            } catch (e) {
+              debugPrint('⚠️ [LOGIN] Error refreshing controllers: $e');
+            }
+          }
 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -35,6 +58,7 @@ class LoginPage extends StatelessWidget {
             ),
           );
 
+          // Navigate to home
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (_) => const BottomNav()),

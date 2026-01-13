@@ -1,9 +1,7 @@
 // lib/services/delivery_service.dart
-
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter/material.dart';
-
 import '../models/delivery_model.dart';
 
 class DeliveryService {
@@ -19,11 +17,11 @@ class DeliveryService {
   }) async {
     try {
       debugPrint('🔄 Updating order status...');
-      debugPrint(' Action: $action');
-      debugPrint(' Order ID: $orderId');
-      debugPrint(' Partner ID: $deliveryPartnerId');
-      if (reason != null) debugPrint(' Reason: $reason');
-      if (notes != null) debugPrint(' Notes: $notes');
+      debugPrint('   Action: $action');
+      debugPrint('   Order ID: $orderId');
+      debugPrint('   Partner ID: $deliveryPartnerId');
+      if (reason != null) debugPrint('   Reason: $reason');
+      if (notes != null) debugPrint('   Notes: $notes');
 
       final response = await http
           .post(
@@ -95,6 +93,7 @@ class DeliveryService {
     }
   }
 
+  /// Get active deliveries for delivery partner
   static Future<List<DeliveryModel>> getActiveDeliveries(
       String partnerId) async {
     try {
@@ -131,7 +130,7 @@ class DeliveryService {
             final List<DeliveryModel> deliveries =
             ordersJson.map((orderJson) {
               debugPrint(
-                  ' 📋 Parsing order: ${orderJson['order_id']} - Status: ${orderJson['status']}');
+                  '   📋 Parsing order: ${orderJson['order_id']} - Status: ${orderJson['status']}');
               return DeliveryModel.fromJson(orderJson);
             }).toList();
 
@@ -143,7 +142,7 @@ class DeliveryService {
           }
         } catch (e) {
           debugPrint('⚠️ JSON Parse Error: $e');
-          debugPrint(' Raw response: ${response.body}');
+          debugPrint('   Raw response: ${response.body}');
           return [];
         }
       } else {
@@ -184,13 +183,25 @@ class DeliveryService {
     );
   }
 
-  /// 3. Mark Order as Picked Up
+  /// 3. Mark Reached Pickup Location
+  static Future<Map<String, dynamic>> markReachedPickup({
+    required String orderId,
+    required String deliveryPartnerId,
+  }) async {
+    debugPrint('📍 Marking reached pickup location...');
+    return _updateStatus(
+      action: 'reached_pickup',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+    );
+  }
+
+  /// 4. Mark Order as Picked Up
   static Future<Map<String, dynamic>> markPickedUp({
     required String orderId,
     required String deliveryPartnerId,
   }) async {
     debugPrint('📦 Marking order as picked up...');
-    // matches PHP case 'picked_up'
     return _updateStatus(
       action: 'picked_up',
       orderId: orderId,
@@ -198,7 +209,33 @@ class DeliveryService {
     );
   }
 
-  /// 4. Mark Order as Delivered
+  /// 5. Mark Order as In Transit / Out for Delivery
+  static Future<Map<String, dynamic>> markInTransit({
+    required String orderId,
+    required String deliveryPartnerId,
+  }) async {
+    debugPrint('🚚 Marking order as in transit...');
+    return _updateStatus(
+      action: 'in_transit',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+    );
+  }
+
+  /// 6. Mark Reached Delivery Location
+  static Future<Map<String, dynamic>> markReachedDelivery({
+    required String orderId,
+    required String deliveryPartnerId,
+  }) async {
+    debugPrint('📍 Marking reached delivery location...');
+    return _updateStatus(
+      action: 'reached_delivery',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+    );
+  }
+
+  /// 7. Mark Order as Delivered
   static Future<Map<String, dynamic>> markDelivered({
     required String orderId,
     required String deliveryPartnerId,
@@ -213,20 +250,7 @@ class DeliveryService {
     );
   }
 
-  /// 5. Mark Order as In Transit
-  static Future<Map<String, dynamic>> markInTransit({
-    required String orderId,
-    required String deliveryPartnerId,
-  }) async {
-    debugPrint('🚚 Marking order as in transit...');
-    return _updateStatus(
-      action: 'in_transit',
-      orderId: orderId,
-      deliveryPartnerId: deliveryPartnerId,
-    );
-  }
-
-  /// 6. Cancel Order  (only valid if you add PHP case 'cancelled')
+  /// 8. Cancel Order
   static Future<Map<String, dynamic>> cancelOrder({
     required String orderId,
     required String deliveryPartnerId,
@@ -241,8 +265,20 @@ class DeliveryService {
     );
   }
 
-  /// ✅ FIXED: Check for pending assignments for delivery partner
-  /// Backend: {success: true, has_pending: true, assignment: {...}}
+  /// 9. Start Delivery (When leaving pickup location)
+  static Future<Map<String, dynamic>> startDelivery({
+    required String orderId,
+    required String deliveryPartnerId,
+  }) async {
+    debugPrint('🚀 Starting delivery...');
+    return _updateStatus(
+      action: 'start_delivery',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+    );
+  }
+
+  /// ✅ Check for pending assignments for delivery partner
   static Future<Map<String, dynamic>> checkPendingAssignments(
       String partnerId,
       ) async {
@@ -265,27 +301,19 @@ class DeliveryService {
 
       debugPrint(
           '📥 Pending Assignments Response Status: ${response.statusCode}');
+      debugPrint('📥 Pending Assignments Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
         try {
           final jsonData = jsonDecode(response.body);
           debugPrint('📥 Pending Assignments Data: $jsonData');
 
-          if (jsonData['success'] == true) {
-            return {
-              'success': true,
-              'has_pending': jsonData['has_pending'] ?? false,
-              'assignment': jsonData['assignment'],
-              'message': jsonData['message'],
-            };
-          } else {
-            return {
-              'success': false,
-              'has_pending': false,
-              'assignment': null,
-              'message': jsonData['message'] ?? 'No pending assignments',
-            };
-          }
+          return {
+            'success': jsonData['success'] ?? false,
+            'has_pending': jsonData['has_pending'] ?? false,
+            'assignment': jsonData['assignment'],
+            'message': jsonData['message'] ?? 'No pending assignments',
+          };
         } catch (e) {
           debugPrint('⚠️ JSON Parse Error: $e');
           return {
@@ -454,6 +482,67 @@ class DeliveryService {
     }
   }
 
+  /// Get single order details
+  static Future<Map<String, dynamic>> getOrderDetails({
+    required String orderId,
+    required String deliveryPartnerId,
+  }) async {
+    try {
+      debugPrint('🔍 Fetching order details: $orderId');
+
+      final response = await http
+          .post(
+        Uri.parse('$baseUrl/delivery/get_order.php'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        encoding: Encoding.getByName('utf-8'),
+        body: {
+          'order_id': orderId,
+          'delivery_partner_id': deliveryPartnerId,
+        },
+      )
+          .timeout(const Duration(seconds: 10));
+
+      debugPrint('📥 Order Details Response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        try {
+          final jsonData = jsonDecode(response.body);
+
+          if (jsonData['success'] == true) {
+            return {
+              'success': true,
+              'order': jsonData['order'],
+            };
+          } else {
+            return {
+              'success': false,
+              'message': jsonData['message'] ?? 'Order not found',
+            };
+          }
+        } catch (e) {
+          return {
+            'success': false,
+            'message': 'Invalid response',
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': 'Server error',
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Get Order Details Error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to fetch order details',
+      };
+    }
+  }
+
   /// Get order history for delivery partner
   static Future<Map<String, dynamic>> getOrderHistory({
     required String deliveryPartnerId,
@@ -584,6 +673,52 @@ class DeliveryService {
         'success': false,
         'message': 'Failed to fetch partner stats',
       };
+    }
+  }
+
+  /// Update delivery partner location
+  static Future<Map<String, dynamic>> updateLocation({
+    required String deliveryPartnerId,
+    required double latitude,
+    required double longitude,
+    String? orderId,
+  }) async {
+    try {
+      debugPrint('📍 Updating location: $latitude, $longitude');
+
+      final response = await http
+          .post(
+        Uri.parse('$baseUrl/delivery/update_location.php'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        encoding: Encoding.getByName('utf-8'),
+        body: {
+          'delivery_partner_id': deliveryPartnerId,
+          'latitude': latitude.toString(),
+          'longitude': longitude.toString(),
+          if (orderId != null) 'order_id': orderId,
+        },
+      )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        try {
+          final jsonData = jsonDecode(response.body);
+          return {
+            'success': jsonData['success'] ?? false,
+            'message': jsonData['message'] ?? 'Location updated',
+          };
+        } catch (e) {
+          return {'success': false, 'message': 'Invalid response'};
+        }
+      } else {
+        return {'success': false, 'message': 'Server error'};
+      }
+    } catch (e) {
+      debugPrint('❌ Update Location Error: $e');
+      return {'success': false, 'message': 'Failed to update location'};
     }
   }
 }

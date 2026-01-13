@@ -1,4 +1,4 @@
-// lib/main.dart
+// lib/main.dart - SIMPLER VERSION
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -14,23 +14,22 @@ import 'package:deliveryui/screens/nav/bottom_nav.dart';
 import 'package:deliveryui/screens/nav/nav_controller.dart';
 import 'package:deliveryui/screens/profile/profile_controller.dart';
 import 'package:deliveryui/screens/splash/splash_screen.dart';
+
 // --- KYC Page Import ---
 import 'package:deliveryui/screens/kyc/kyc_page.dart';
+
 // --- Locale Provider ---
 import 'core/locale_provider.dart';
 
-Future<void> main() async {
+Future main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   final prefs = await SharedPreferences.getInstance();
   final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
-
   runApp(DeliveryBoyApp(isLoggedIn: isLoggedIn));
 }
 
 class DeliveryBoyApp extends StatelessWidget {
   final bool isLoggedIn;
-
   const DeliveryBoyApp({super.key, required this.isLoggedIn});
 
   @override

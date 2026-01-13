@@ -1,23 +1,27 @@
 // lib/screens/home/home_page.dart
 
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+// Controllers & Services
 import '../delivery/order_tracking_screen.dart';
 import 'home_controller.dart';
-import '../../screens/home/widgets/current_delivery_card.dart';
-import '../../screens/home/widgets/new_order_card.dart';
-import '../../models/delivery_model.dart';
-import 'widgets/upcoming_tile.dart';
 import '../auth/auth_controller.dart';
 import '../deliveries/deliveries_controller.dart';
 import '../map/osm_navigation_screen.dart';
 import '../chatbot/chatbot_page.dart';
 import '../../services/delivery_service.dart';
+
+// Models
+import '../../models/delivery_model.dart';
+
+// Widgets
+import 'widgets/current_delivery_card.dart';
+import 'widgets/new_order_card.dart';
+import 'widgets/upcoming_tile.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -27,18 +31,21 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  Timer? _pollingTimer;
+  Timer? pollingTimer;
 
   @override
   void initState() {
     super.initState();
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _requestLocationPermission();
+      // ✅ Check mounted before everything
+      if (!mounted) return;
+
+      requestLocationPermission();
 
       // Get partner ID from AuthController
       final auth = context.read<AuthController>();
       final partnerId = auth.getCurrentUserId();
+
       if (partnerId == null || partnerId.isEmpty) {
         debugPrint('❌ Cannot initialize: User ID is null/invalid');
         return;
@@ -48,14 +55,24 @@ class _HomePageState extends State<HomePage> {
       final home = context.read<HomeController>();
       home.initialize(partnerId).then((_) {
         debugPrint('✅ HomeController initialized');
-        // Start polling after initialization
-        _startPolling();
+        // ✅ FIXED: Check if widget is still mounted before starting polling
+        if (mounted) {
+          startPolling();
+        }
+      }).catchError((error) {
+        debugPrint('❌ HomeController initialization failed: $error');
       });
     });
   }
 
-  // Start polling for pending assignments every 5 seconds
-  void _startPolling() {
+  /// ✅ FIXED: Start polling with proper mounted checks
+  void startPolling() {
+    // ✅ Check if widget is mounted first
+    if (!mounted) {
+      debugPrint('⚠️ Cannot start polling: Widget is unmounted');
+      return;
+    }
+
     final auth = context.read<AuthController>();
     final uid = auth.getCurrentUserId();
 
@@ -64,62 +81,72 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    debugPrint('🔄 Starting order polling for partner: $uid...');
-    _pollingTimer =
-        Timer.periodic(const Duration(seconds: 5), (timer) async {
-          final home = context.read<HomeController>();
-          if (!home.isOnline) {
-            return; // skip when offline
+    debugPrint('📡 Starting order polling for partner: $uid...');
+
+    pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
+      // ✅ Check mounted before each iteration
+      if (!mounted) {
+        timer.cancel();
+        debugPrint('⚠️ Stopping polling: Widget unmounted');
+        return;
+      }
+
+      final home = context.read<HomeController>();
+      if (!home.isOnline) return; // skip when offline
+
+      try {
+        final result = await DeliveryService.checkPendingAssignments(uid);
+        final assignment = result['assignment'];
+
+        if (result['success'] == true &&
+            result['has_pending'] == true &&
+            assignment != null &&
+            assignment is Map) {
+          debugPrint('🆕 NEW ORDER DETECTED!');
+          debugPrint('   Order ID: ${assignment['order_id']}');
+          debugPrint('   Mess: ${assignment['mess_name']}');
+          debugPrint('   Amount: ${assignment['total_amount']}');
+          debugPrint('   Address: ${assignment['delivery_address']}');
+
+          // Stop polling while dialog is open
+          timer.cancel();
+
+          // ✅ Check mounted before showing dialog
+          if (mounted) {
+            showNewOrderDialog(assignment);
           }
-
-          try {
-            final result = await DeliveryService.checkPendingAssignments(uid);
-            final assignment = result['assignment'];
-
-            if (result['success'] == true &&
-                result['has_pending'] == true &&
-                assignment != null &&
-                assignment is Map) {
-              debugPrint('🔔 NEW ORDER DETECTED!');
-              debugPrint(' Order ID: ${assignment['order_id']}');
-              debugPrint(' Mess: ${assignment['mess_name']}');
-              debugPrint(' Amount: ${assignment['total_amount']}');
-              debugPrint(' Address: ${assignment['delivery_address']}');
-
-              // Stop polling while dialog is open
-              timer.cancel();
-
-              if (mounted) {
-                _showNewOrderDialog(assignment);
-              }
-            }
-          } catch (e) {
-            debugPrint('❌ Polling error: $e');
-          }
-        });
+        }
+      } catch (e) {
+        debugPrint('❌ Polling error: $e');
+      }
+    });
   }
 
-  // Stop polling timer
-  void _stopPolling() {
-    if (_pollingTimer != null) {
-      _pollingTimer!.cancel();
-      _pollingTimer = null;
+  /// Stop polling timer
+  void stopPolling() {
+    if (pollingTimer != null) {
+      pollingTimer!.cancel();
+      pollingTimer = null;
       debugPrint('🛑 Stopped order polling');
     }
   }
 
   /// Show new order dialog with Accept/Reject options
-  void _showNewOrderDialog(Map assignment) {
+  void showNewOrderDialog(Map<dynamic, dynamic> assignment) {
+    if (!mounted) return;
+
     final auth = context.read<AuthController>();
     final uid = auth.getCurrentUserId() ?? '';
-    debugPrint('📋 SHOWING DIALOG NOW...');
+
+    debugPrint('📢 SHOWING DIALOG NOW...');
 
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         contentPadding: const EdgeInsets.all(20),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -172,7 +199,7 @@ class _HomePageState extends State<HomePage> {
             _buildDetailRow(
               Icons.currency_rupee,
               'Amount',
-              '₹${assignment['total_amount']?.toString() ?? '0'}',
+              assignment['total_amount']?.toString() ?? '0',
             ),
             const SizedBox(height: 24),
 
@@ -193,10 +220,8 @@ class _HomePageState extends State<HomePage> {
                     label: const Text('Reject'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red,
-                      side:
-                      const BorderSide(color: Colors.red, width: 2),
-                      padding:
-                      const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: Colors.red, width: 2),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -204,6 +229,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(width: 12),
+
                 // Accept Button
                 Expanded(
                   flex: 2,
@@ -220,8 +246,7 @@ class _HomePageState extends State<HomePage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
                       foregroundColor: Colors.white,
-                      padding:
-                      const EdgeInsets.symmetric(vertical: 12),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -274,8 +299,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// Handle accept from dialog
-  Future<void> _handleAcceptFromDialog(
-      String orderId, String partnerId) async {
+  Future<void> _handleAcceptFromDialog(String orderId, String partnerId) async {
     debugPrint('✅ Accepting order from dialog: $orderId');
 
     try {
@@ -289,7 +313,7 @@ class _HomePageState extends State<HomePage> {
                   height: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(Colors.white),
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
                 ),
                 SizedBox(width: 16),
@@ -325,8 +349,9 @@ class _HomePageState extends State<HomePage> {
             ),
           );
 
-          debugPrint('🔄 Refreshing deliveries after accept...');
+          debugPrint('✅ Refreshing deliveries after accept...');
 
+          // Refresh deliveries
           try {
             final deliveriesController = context.read<DeliveriesController>();
             await deliveriesController.fetchDeliveries();
@@ -338,19 +363,23 @@ class _HomePageState extends State<HomePage> {
           final homeController = context.read<HomeController>();
           await homeController.fetchDeliveries();
           debugPrint('✅ HomeController refreshed');
-          setState(() {});
 
-          // ✅ ADD: Navigate to OrderTrackingScreen
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => OrderTrackingScreen(
-                orderId: orderId,
-                deliveryPartnerId: partnerId,
+          if (mounted) {
+            setState(() {});
+          }
+
+          // Navigate to OrderTrackingScreen
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OrderTrackingScreen(
+                  orderId: orderId,
+                  deliveryPartnerId: partnerId,
+                ),
               ),
-            ),
-          );
-
+            );
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -389,15 +418,13 @@ class _HomePageState extends State<HomePage> {
     } finally {
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
-        _startPolling();
+        startPolling();
       }
     }
   }
 
-
   /// Handle reject from dialog
-  Future<void> _handleRejectFromDialog(
-      String orderId, String partnerId) async {
+  Future<void> _handleRejectFromDialog(String orderId, String partnerId) async {
     debugPrint('❌ Rejecting order from dialog: $orderId');
 
     try {
@@ -411,8 +438,8 @@ class _HomePageState extends State<HomePage> {
         if (result['success'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['message'] ??
-                  'Order rejected and reassigned'),
+              content:
+              Text(result['message'] ?? 'Order rejected and reassigned'),
               backgroundColor: Colors.orange,
               duration: const Duration(seconds: 2),
             ),
@@ -420,8 +447,7 @@ class _HomePageState extends State<HomePage> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['message'] ??
-                  'Failed to reject order'),
+              content: Text(result['message'] ?? 'Failed to reject order'),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 3),
             ),
@@ -441,15 +467,16 @@ class _HomePageState extends State<HomePage> {
     } finally {
       await Future.delayed(const Duration(seconds: 2));
       if (mounted) {
-        _startPolling();
+        startPolling();
       }
     }
   }
 
-  /// NEW: Handle Mark as Picked Up
+  /// Handle Mark as Picked Up
   void _handleMarkPickedUp(BuildContext context, String orderId) async {
     final auth = context.read<AuthController>();
     final partnerId = auth.getCurrentUserId() ?? '';
+
     debugPrint('📦 Marking order as picked up: $orderId');
 
     try {
@@ -468,16 +495,16 @@ class _HomePageState extends State<HomePage> {
             ),
           );
 
-          final deliveriesController =
-          context.read<DeliveriesController>();
+          final deliveriesController = context.read<DeliveriesController>();
           await deliveriesController.fetchDeliveries();
+
           final homeController = context.read<HomeController>();
           await homeController.fetchDeliveries();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['message'] ??
-                  'Failed to mark as picked up'),
+              content:
+              Text(result['message'] ?? 'Failed to mark as picked up'),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 3),
             ),
@@ -497,11 +524,11 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// NEW: Handle Mark as In Transit
-  void _handleMarkInTransit(
-      BuildContext context, String orderId) async {
+  /// Handle Mark as In Transit
+  void _handleMarkInTransit(BuildContext context, String orderId) async {
     final auth = context.read<AuthController>();
     final partnerId = auth.getCurrentUserId() ?? '';
+
     debugPrint('🚚 Marking order as in transit: $orderId');
 
     try {
@@ -520,16 +547,16 @@ class _HomePageState extends State<HomePage> {
             ),
           );
 
-          final deliveriesController =
-          context.read<DeliveriesController>();
+          final deliveriesController = context.read<DeliveriesController>();
           await deliveriesController.fetchDeliveries();
+
           final homeController = context.read<HomeController>();
           await homeController.fetchDeliveries();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(result['message'] ??
-                  'Failed to mark as in transit'),
+              content:
+              Text(result['message'] ?? 'Failed to mark as in transit'),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 3),
             ),
@@ -549,14 +576,14 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// NEW: Handle Mark as Delivered
-  void _handleMarkDelivered(
-      BuildContext context, String orderId) async {
+  /// Handle Mark as Delivered
+  void _handleMarkDelivered(BuildContext context, String orderId) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        shape:
-        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         title: const Row(
           children: [
             Icon(Icons.check_circle, color: Colors.green, size: 28),
@@ -570,20 +597,20 @@ class _HomePageState extends State<HomePage> {
         ),
         actions: [
           TextButton(
-            onPressed: () =>
-                Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           ElevatedButton.icon(
-            onPressed: () =>
-                Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(context, true),
             icon: const Icon(Icons.check, size: 18),
             label: const Text('Confirm Delivery'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
+                horizontal: 16,
+                vertical: 12,
+              ),
             ),
           ),
         ],
@@ -593,6 +620,7 @@ class _HomePageState extends State<HomePage> {
     if (confirm == true && mounted) {
       final auth = context.read<AuthController>();
       final partnerId = auth.getCurrentUserId() ?? '';
+
       debugPrint('✅ Marking order as delivered: $orderId');
 
       try {
@@ -608,8 +636,7 @@ class _HomePageState extends State<HomePage> {
               const SnackBar(
                 content: Row(
                   children: [
-                    Icon(Icons.celebration,
-                        color: Colors.white),
+                    Icon(Icons.celebration, color: Colors.white),
                     SizedBox(width: 12),
                     Text('Order delivered successfully!'),
                   ],
@@ -619,17 +646,16 @@ class _HomePageState extends State<HomePage> {
               ),
             );
 
-            final deliveriesController =
-            context.read<DeliveriesController>();
+            final deliveriesController = context.read<DeliveriesController>();
             await deliveriesController.fetchDeliveries();
-            final homeController =
-            context.read<HomeController>();
+
+            final homeController = context.read<HomeController>();
             await homeController.fetchDeliveries();
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text(result['message'] ??
-                    'Failed to mark as delivered'),
+                content:
+                Text(result['message'] ?? 'Failed to mark as delivered'),
                 backgroundColor: Colors.red,
                 duration: const Duration(seconds: 3),
               ),
@@ -650,7 +676,8 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _requestLocationPermission() async {
+  /// Location Permission
+  Future<void> requestLocationPermission() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       if (mounted) {
@@ -659,8 +686,7 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    LocationPermission permission =
-    await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
@@ -709,7 +735,7 @@ class _HomePageState extends State<HomePage> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              _requestLocationPermission();
+              requestLocationPermission();
             },
             child: const Text('Retry'),
           ),
@@ -741,6 +767,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  /// Navigate to Mess
   Future<void> _navigateToMess() async {
     Navigator.push(
       context,
@@ -754,12 +781,14 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _handleAcceptOrder(BuildContext context, String orderId) async {
-    final deliveriesController =
-    context.read<DeliveriesController>();
-    final success = await deliveriesController.acceptOrder(orderId);
-    if (mounted) {
-      if (success) {
+  /// ✅ FIXED: Handle Accept Order (from NewOrderCard)
+  void handleAcceptOrder(BuildContext context, String orderId) async {
+    final deliveriesController = context.read<DeliveriesController>();
+
+    try {
+      final success = await deliveriesController.acceptOrder(orderId); // ✅ FIXED
+
+      if (mounted && success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Order accepted successfully!'),
@@ -767,11 +796,14 @@ class _HomePageState extends State<HomePage> {
             duration: Duration(seconds: 2),
           ),
         );
-      } else {
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(deliveriesController.errorMessage ??
-                'Failed to accept order'),
+            content: Text((deliveriesController.errorMessage?.isNotEmpty ?? false) // ✅ FIXED
+                ? deliveriesController.errorMessage!
+                : 'Failed to accept order'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -780,24 +812,21 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _handleRejectOrder(BuildContext context, String orderId) async {
+  /// ✅ FIXED: Handle Reject Order (from NewOrderCard)
+  void handleRejectOrder(BuildContext context, String orderId) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Reject Order?'),
-        content: const Text(
-            'Are you sure you want to reject this order?'),
+        content: const Text('Are you sure you want to reject this order?'),
         actions: [
           TextButton(
-            onPressed: () =>
-                Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () =>
-                Navigator.pop(context, true),
-            style:
-            TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Reject'),
           ),
         ],
@@ -805,12 +834,13 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (confirm == true && mounted) {
-      final deliveriesController =
-      context.read<DeliveriesController>();
-      final success =
-      await deliveriesController.rejectOrder(orderId);
-      if (mounted) {
-        if (success) {
+      final deliveriesController = context.read<DeliveriesController>();
+
+      try {
+        final success = await deliveriesController.rejectOrder(
+            orderId, reason: 'User declined'); // ✅ FIXED
+
+        if (mounted && success) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Order rejected'),
@@ -818,11 +848,14 @@ class _HomePageState extends State<HomePage> {
               duration: Duration(seconds: 2),
             ),
           );
-        } else {
+        }
+      } catch (e) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(deliveriesController.errorMessage ??
-                  'Failed to reject order'),
+              content: Text((deliveriesController.errorMessage?.isNotEmpty ?? false) // ✅ FIXED
+                  ? deliveriesController.errorMessage!
+                  : 'Failed to reject order'),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 3),
             ),
@@ -834,7 +867,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    _stopPolling();
+    stopPolling();
     super.dispose();
   }
 
@@ -842,21 +875,18 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final home = context.watch<HomeController>();
     final auth = context.watch<AuthController>();
-    final deliveriesController =
-    context.watch<DeliveriesController>();
+    final deliveriesController = context.watch<DeliveriesController>();
 
     final DeliveryModel? current = home.currentDelivery;
-    final List<DeliveryModel> upcoming =
-        home.upcomingDeliveries;
-    final List newOrders = deliveriesController.newOrders;
+    final List<DeliveryModel> upcoming = home.upcomingDeliveries;
+    final List<DeliveryModel> newOrders = deliveriesController.newOrders;
 
     final completed = home.completedCount;
     final pending = home.pendingCount;
     final cancelled = home.cancelledCount;
     final isOnline = home.isOnline;
-    final userName =
-        auth.user?.name ?? 'Delivery Partner';
 
+    final userName = auth.user?.name ?? 'Delivery Partner';
     final now = DateTime.now();
     final dateStr = DateFormat('EEE, d MMM').format(now);
 
@@ -865,25 +895,18 @@ class _HomePageState extends State<HomePage> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Header + toggle
+            // ===== HEADER SECTION =====
             AnimatedContainer(
               duration: const Duration(milliseconds: 500),
               curve: Curves.easeInOut,
               height: 240,
               width: double.infinity,
-              padding:
-              const EdgeInsets.fromLTRB(20, 50, 20, 20),
+              padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: isOnline
-                      ? [
-                    const Color(0xFF2E7D32),
-                    const Color(0xFF4CAF50)
-                  ]
-                      : [
-                    const Color(0xFFC62828),
-                    const Color(0xFFEF5350)
-                  ],
+                      ? [const Color(0xFF2E7D32), const Color(0xFF4CAF50)]
+                      : [const Color(0xFFC62828), const Color(0xFFEF5350)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -893,48 +916,44 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               child: Column(
-                crossAxisAlignment:
-                CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
-                    mainAxisAlignment:
-                    MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      // User Name & Date
                       Flexible(
                         child: Column(
-                          crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               'Hello, $userName',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 20,
-                                fontWeight:
-                                FontWeight.bold,
+                                fontWeight: FontWeight.bold,
                               ),
-                              overflow:
-                              TextOverflow.ellipsis,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 4),
                             Text(
                               dateStr,
                               style: TextStyle(
-                                color: Colors.white
-                                    .withOpacity(0.9),
+                                color: Colors.white.withOpacity(0.9),
                                 fontSize: 14,
                               ),
                             ),
                           ],
                         ),
                       ),
+
+                      // Action Icons
                       Row(
                         children: [
                           // Chat Button
                           Container(
                             decoration: BoxDecoration(
-                              color: Colors.white
-                                  .withOpacity(0.2),
+                              color: Colors.white.withOpacity(0.2),
                               shape: BoxShape.circle,
                             ),
                             child: IconButton(
@@ -947,8 +966,7 @@ class _HomePageState extends State<HomePage> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) =>
-                                    const ChatbotPage(),
+                                    builder: (context) => const ChatbotPage(),
                                   ),
                                 );
                               },
@@ -956,23 +974,20 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                           const SizedBox(width: 8),
+
                           // Profile Icon
                           Container(
-                            padding:
-                            const EdgeInsets.all(2),
+                            padding: const EdgeInsets.all(2),
                             decoration: const BoxDecoration(
                               color: Colors.white,
                               shape: BoxShape.circle,
                             ),
                             child: CircleAvatar(
                               radius: 20,
-                              backgroundColor:
-                              Colors.white,
+                              backgroundColor: Colors.white,
                               child: Icon(
                                 Icons.person,
-                                color: isOnline
-                                    ? Colors.green
-                                    : Colors.red,
+                                color: isOnline ? Colors.green : Colors.red,
                               ),
                             ),
                           ),
@@ -980,31 +995,30 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ],
                   ),
+
                   const SizedBox(height: 20),
-                  SwipeToggleButton(
+
+                  // Swipe Toggle Button
+                  _SwipeToggleButton(
                     isOnline: isOnline,
-                    onToggle: home.isLoading
-                        ? null
-                        : home.toggleOnline,
+                    onToggle: home.isLoading ? null : home.toggleOnline,
                   ),
                 ],
               ),
             ),
 
-            // Floating stats grid
+            // ===== STATS GRID =====
             Transform.translate(
               offset: const Offset(0, -60),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: GridView.count(
                   shrinkWrap: true,
                   crossAxisCount: 2,
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
                   childAspectRatio: 1.6,
-                  physics:
-                  const NeverScrollableScrollPhysics(),
+                  physics: const NeverScrollableScrollPhysics(),
                   children: [
                     _buildStatCard(
                       'Today\'s Earnings',
@@ -1014,19 +1028,19 @@ class _HomePageState extends State<HomePage> {
                     ),
                     _buildStatCard(
                       'Completed',
-                      '$completed',
+                      completed.toString(),
                       Icons.check_circle,
                       Colors.green,
                     ),
                     _buildStatCard(
                       'Pending',
-                      '$pending',
+                      pending.toString(),
                       Icons.access_time,
                       Colors.blue,
                     ),
                     _buildStatCard(
                       'Cancelled',
-                      '$cancelled',
+                      cancelled.toString(),
                       Icons.cancel,
                       Colors.red,
                     ),
@@ -1035,50 +1049,40 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // Main content
+            // ===== MAIN CONTENT =====
             Transform.translate(
               offset: const Offset(0, -80),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // New Orders
+                    // NEW ORDERS
                     if (newOrders.isNotEmpty) ...[
                       Row(
-                        mainAxisAlignment:
-                        MainAxisAlignment
-                            .spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
                             'New Orders',
                             style: TextStyle(
                               fontSize: 18,
-                              fontWeight:
-                              FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                           Container(
-                            padding:
-                            const EdgeInsets
-                                .symmetric(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
                               color: Colors.orange,
-                              borderRadius:
-                              BorderRadius.circular(
-                                  12),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
                               '${newOrders.length}',
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontWeight:
-                                FontWeight.bold,
+                                fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
@@ -1088,18 +1092,14 @@ class _HomePageState extends State<HomePage> {
                       ...newOrders.map((order) {
                         return NewOrderCard(
                           order: order,
-                          onAccept: () =>
-                              _handleAcceptOrder(
-                                  context, order.id),
-                          onReject: () =>
-                              _handleRejectOrder(
-                                  context, order.id),
+                          onAccept: () => handleAcceptOrder(context, order.id),
+                          onReject: () => handleRejectOrder(context, order.id),
                         );
                       }).toList(),
                       const SizedBox(height: 24),
                     ],
 
-                    // Active Delivery
+                    // ACTIVE DELIVERY
                     const Text(
                       'Active Delivery',
                       style: TextStyle(
@@ -1108,41 +1108,34 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                     const SizedBox(height: 12),
+
                     if (current != null)
                       CurrentDeliveryCard(
-                        key: ValueKey(
-                            'active_${current.id}'),
+                        key: ValueKey('active_${current.id}'),
                         delivery: current,
                         onCall: () {
                           debugPrint(
                               '📞 Calling customer: ${current.customerName}');
-                          ScaffoldMessenger.of(context)
-                              .showSnackBar(
+                          ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text(
-                                  '📞 Call functionality coming soon!'),
-                              duration:
-                              Duration(seconds: 2),
+                              content: Text('Call functionality coming soon!'),
+                              duration: Duration(seconds: 2),
                             ),
                           );
                         },
                         onPickedUp: () =>
-                            _handleMarkPickedUp(
-                                context, current.id),
+                            _handleMarkPickedUp(context, current.id),
                         onInTransit: () =>
-                            _handleMarkInTransit(
-                                context, current.id),
+                            _handleMarkInTransit(context, current.id),
                         onDelivered: () =>
-                            _handleMarkDelivered(
-                                context, current.id),
+                            _handleMarkDelivered(context, current.id),
                       )
                     else
-                      _buildEmptyActiveDelivery(
-                          isOnline),
+                      _buildEmptyActiveDelivery(isOnline),
 
                     const SizedBox(height: 24),
 
-                    // Next Pickup
+                    // NEXT PICKUP
                     const Text(
                       'Next Pickup',
                       style: TextStyle(
@@ -1155,67 +1148,55 @@ class _HomePageState extends State<HomePage> {
 
                     const SizedBox(height: 24),
 
-                    // Upcoming Orders
+                    // UPCOMING ORDERS
                     Row(
-                      mainAxisAlignment:
-                      MainAxisAlignment
-                          .spaceBetween,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
                           'Upcoming Orders',
                           style: TextStyle(
                             fontSize: 18,
-                            fontWeight:
-                            FontWeight.bold,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                         Container(
-                          padding:
-                          const EdgeInsets
-                              .symmetric(
+                          padding: const EdgeInsets.symmetric(
                             horizontal: 10,
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.green
-                                .withOpacity(0.1),
-                            borderRadius:
-                            BorderRadius.circular(
-                                12),
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             '${upcoming.length}',
                             style: const TextStyle(
                               color: Colors.green,
-                              fontWeight:
-                              FontWeight.bold,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
+
                     if (upcoming.isEmpty)
                       Center(
                         child: Padding(
-                          padding:
-                          const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(20),
                           child: Text(
                             'No upcoming orders',
-                            style: TextStyle(
-                                color:
-                                Colors.grey[500]),
+                            style: TextStyle(color: Colors.grey[500]),
                           ),
                         ),
                       )
                     else
                       Column(
                         children: upcoming
-                            .map((d) =>
-                            UpcomingTile(
-                                delivery: d))
+                            .map((d) => UpcomingTile(delivery: d))
                             .toList(),
                       ),
+
                     const SizedBox(height: 100),
                   ],
                 ),
@@ -1226,6 +1207,8 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  // ===== UI HELPER WIDGETS =====
 
   Widget _buildStatCard(
       String title, String value, IconData icon, Color color) {
@@ -1243,30 +1226,25 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       child: Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
-        mainAxisAlignment:
-        MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             children: [
               Container(
-                padding:
-                const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon,
-                    color: color, size: 18),
+                child: Icon(icon, color: color, size: 18),
               ),
               const Spacer(),
               Text(
                 value,
                 style: const TextStyle(
                   fontSize: 20,
-                  fontWeight:
-                  FontWeight.bold,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
             ],
@@ -1295,32 +1273,25 @@ class _HomePageState extends State<HomePage> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-        BorderRadius.circular(16),
-        border: Border.all(
-            color: Colors.orange.shade100),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.shade100),
         boxShadow: [
           BoxShadow(
-            color:
-            Colors.black.withOpacity(0.03),
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 8,
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding:
-                const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.orange
-                      .withOpacity(0.1),
-                  borderRadius:
-                  BorderRadius.circular(8),
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Icon(
                   Icons.store,
@@ -1331,14 +1302,12 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(width: 12),
               const Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                  CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Shree Kitchen',
                       style: TextStyle(
-                        fontWeight:
-                        FontWeight.bold,
+                        fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
                     ),
@@ -1353,22 +1322,19 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets
-                    .symmetric(
+                padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
                   color: Colors.orange,
-                  borderRadius:
-                  BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
                   '25 Tiffins',
                   style: TextStyle(
                     color: Colors.white,
-                    fontWeight:
-                    FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
                 ),
@@ -1378,18 +1344,15 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 16),
           Row(
             children: [
-              Icon(Icons.access_time,
-                  size: 16,
-                  color: Colors.grey[600]),
+              Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
               const SizedBox(width: 6),
               const Expanded(
                 child: Text(
                   '10:15 - 10:45 AM',
                   style: TextStyle(
-                      fontWeight:
-                      FontWeight.w500),
-                  overflow:
-                  TextOverflow.ellipsis,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -1399,18 +1362,14 @@ class _HomePageState extends State<HomePage> {
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _navigateToMess,
-              icon: const Icon(Icons.navigation,
-                  size: 18),
+              icon: const Icon(Icons.navigation, size: 18),
               label: const Text('Navigate to Mess'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
                 foregroundColor: Colors.white,
-                padding:
-                const EdgeInsets.symmetric(
-                    vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 shape: RoundedRectangleBorder(
-                  borderRadius:
-                  BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
             ),
@@ -1420,24 +1379,19 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Empty active delivery state
   Widget _buildEmptyActiveDelivery(bool isOnline) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-        BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isOnline
-              ? Colors.green.shade100
-              : Colors.grey.shade200,
+          color: isOnline ? Colors.green.shade100 : Colors.grey.shade200,
         ),
         boxShadow: [
           BoxShadow(
-            color:
-            Colors.black.withOpacity(0.03),
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 8,
           ),
         ],
@@ -1449,20 +1403,14 @@ class _HomePageState extends State<HomePage> {
             height: 80,
             decoration: BoxDecoration(
               color: isOnline
-                  ? Colors.green
-                  .withOpacity(0.1)
-                  : Colors.grey
-                  .withOpacity(0.1),
+                  ? Colors.green.withOpacity(0.1)
+                  : Colors.grey.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(
-              isOnline
-                  ? Icons.search
-                  : Icons.power_settings_new,
+              isOnline ? Icons.search : Icons.power_settings_new,
               size: 40,
-              color: isOnline
-                  ? Colors.green
-                  : Colors.grey,
+              color: isOnline ? Colors.green : Colors.grey,
             ),
           ),
           const SizedBox(height: 16),
@@ -1491,8 +1439,7 @@ class _HomePageState extends State<HomePage> {
           if (isOnline) ...[
             const SizedBox(height: 16),
             Row(
-              mainAxisAlignment:
-              MainAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _buildLoadingDot(0),
                 const SizedBox(width: 8),
@@ -1508,15 +1455,12 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildLoadingDot(int delay) {
-    return TweenAnimationBuilder(
+    return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0.0, end: 1.0),
-      duration:
-      const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 1000),
       builder: (context, value, child) {
         return Opacity(
-          opacity: (value * 2) % 2 > 1
-              ? 2 - (value * 2) % 2
-              : (value * 2) % 2,
+          opacity: ((value * 2) % 2) > 1 ? 2 - (value * 2) % 2 : (value * 2) % 2,
           child: Container(
             width: 8,
             height: 8,
@@ -1536,48 +1480,39 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-/// --- SwipeToggleButton ---
+// ===== SWIPE TOGGLE BUTTON =====
 
-class SwipeToggleButton extends StatefulWidget {
+class _SwipeToggleButton extends StatefulWidget {
   final bool isOnline;
-  final VoidCallback? onToggle; // nullable: null means disabled
+  final VoidCallback? onToggle;
 
-  const SwipeToggleButton({
-    super.key,
+  const _SwipeToggleButton({
     required this.isOnline,
     required this.onToggle,
   });
 
   @override
-  State<SwipeToggleButton> createState() =>
-      _SwipeToggleButtonState();
+  State<_SwipeToggleButton> createState() => _SwipeToggleButtonState();
 }
 
-class _SwipeToggleButtonState
-    extends State<SwipeToggleButton> {
+class _SwipeToggleButtonState extends State<_SwipeToggleButton> {
   double dragPosition = 0.0;
   bool isDragging = false;
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth =
-        MediaQuery.of(context).size.width - 40;
+    final screenWidth = MediaQuery.of(context).size.width - 40;
     const height = 54.0;
     final thumbWidth = screenWidth / 2;
     final maxDrag = screenWidth - thumbWidth;
-
-    final targetPosition =
-    widget.isOnline ? maxDrag : 0.0;
-    final currentPosition =
-    isDragging ? dragPosition : targetPosition;
-    final dragPercentage =
-    (currentPosition / maxDrag).clamp(0.0, 1.0);
+    final targetPosition = widget.isOnline ? maxDrag : 0.0;
+    final currentPosition = isDragging ? dragPosition : targetPosition;
+    final dragPercentage = (currentPosition / maxDrag).clamp(0.0, 1.0);
     final backgroundColor = Color.lerp(
       Colors.red.shade400,
       Colors.green.shade600,
       dragPercentage,
     )!;
-
     final canToggle = widget.onToggle != null;
 
     return Opacity(
@@ -1590,8 +1525,7 @@ class _SwipeToggleButtonState
           borderRadius: BorderRadius.circular(30),
           boxShadow: [
             BoxShadow(
-              color:
-              backgroundColor.withOpacity(0.4),
+              color: backgroundColor.withOpacity(0.4),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -1608,18 +1542,13 @@ class _SwipeToggleButtonState
                 Expanded(
                   child: Center(
                     child: AnimatedOpacity(
-                      opacity: !widget.isOnline &&
-                          !isDragging
-                          ? 1.0
-                          : 0.5,
-                      duration: const Duration(
-                          milliseconds: 200),
+                      opacity: !widget.isOnline && !isDragging ? 1.0 : 0.5,
+                      duration: const Duration(milliseconds: 200),
                       child: const Text(
                         'Offline',
                         style: TextStyle(
                           color: Colors.white,
-                          fontWeight:
-                          FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                           fontSize: 15,
                         ),
                       ),
@@ -1629,18 +1558,13 @@ class _SwipeToggleButtonState
                 Expanded(
                   child: Center(
                     child: AnimatedOpacity(
-                      opacity: widget.isOnline &&
-                          !isDragging
-                          ? 1.0
-                          : 0.5,
-                      duration: const Duration(
-                          milliseconds: 200),
+                      opacity: widget.isOnline && !isDragging ? 1.0 : 0.5,
+                      duration: const Duration(milliseconds: 200),
                       child: const Text(
                         'Online',
                         style: TextStyle(
                           color: Colors.white,
-                          fontWeight:
-                          FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                           fontSize: 15,
                         ),
                       ),
@@ -1652,56 +1576,36 @@ class _SwipeToggleButtonState
             AnimatedPositioned(
               duration: isDragging
                   ? Duration.zero
-                  : const Duration(
-                  milliseconds: 300),
+                  : const Duration(milliseconds: 300),
               curve: Curves.easeOutBack,
               left: currentPosition,
               top: 2,
               bottom: 2,
               child: GestureDetector(
                 onHorizontalDragStart: canToggle
-                    ? (_) {
-                  setState(() {
-                    isDragging = true;
-                    dragPosition =
-                        targetPosition;
-                  });
-                }
+                    ? (_) => setState(() {
+                  isDragging = true;
+                  dragPosition = targetPosition;
+                })
                     : null,
                 onHorizontalDragUpdate: canToggle
-                    ? (d) {
-                  setState(() {
-                    dragPosition =
-                        (dragPosition +
-                            d.delta.dx)
-                            .clamp(0.0, maxDrag);
-                  });
-                }
+                    ? (d) => setState(() {
+                  dragPosition =
+                      (dragPosition + d.delta.dx).clamp(0.0, maxDrag);
+                })
                     : null,
                 onHorizontalDragEnd: canToggle
-                    ? (_) {
-                  setState(() {
-                    isDragging = false;
-
-                    // right swipe: go online
-                    if (dragPosition >
-                        maxDrag / 2 &&
-                        !widget.isOnline) {
-                      widget.onToggle?.call();
-                    }
-                    // left swipe: go offline
-                    else if (dragPosition <
-                        maxDrag / 2 &&
-                        widget.isOnline) {
-                      widget.onToggle?.call();
-                    } else {
-                      dragPosition =
-                      widget.isOnline
-                          ? maxDrag
-                          : 0.0;
-                    }
-                  });
-                }
+                    ? (_) => setState(() {
+                  isDragging = false;
+                  if (dragPosition > maxDrag / 2 && !widget.isOnline) {
+                    widget.onToggle?.call();
+                  } else if (dragPosition < maxDrag / 2 &&
+                      widget.isOnline) {
+                    widget.onToggle?.call();
+                  } else {
+                    dragPosition = widget.isOnline ? maxDrag : 0.0;
+                  }
+                })
                     : null,
                 onTap: canToggle
                     ? () {
@@ -1714,21 +1618,17 @@ class _SwipeToggleButtonState
                   width: thumbWidth - 4,
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius:
-                    BorderRadius.circular(26),
+                    borderRadius: BorderRadius.circular(26),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black
-                            .withOpacity(0.15),
+                        color: Colors.black.withOpacity(0.15),
                         blurRadius: 4,
-                        offset:
-                        const Offset(0, 2),
+                        offset: const Offset(0, 2),
                       ),
                     ],
                   ),
                   child: Row(
-                    mainAxisAlignment:
-                    MainAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
                         widget.isOnline
@@ -1739,13 +1639,10 @@ class _SwipeToggleButtonState
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        widget.isOnline
-                            ? 'Online'
-                            : 'Offline',
+                        widget.isOnline ? 'Online' : 'Offline',
                         style: TextStyle(
                           color: backgroundColor,
-                          fontWeight:
-                          FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
                       ),

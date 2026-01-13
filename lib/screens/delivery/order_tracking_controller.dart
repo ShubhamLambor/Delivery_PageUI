@@ -1,10 +1,14 @@
+// lib/screens/delivery/order_tracking_controller.dart
+
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import '../../services/delivery_service.dart';
 
 class OrderTrackingController extends ChangeNotifier {
   final String orderId;
   final String deliveryPartnerId;
+
+  // Base URL for API
+  static const String baseUrl = 'https://svtechshant.com/tiffin/api';
 
   OrderTrackingController({
     required this.orderId,
@@ -12,7 +16,7 @@ class OrderTrackingController extends ChangeNotifier {
   });
 
   bool isLoading = false;
-  String orderStatus = 'accepted'; // accepted, picked_up, delivered
+  String orderStatus = 'accepted'; // accepted, reached_pickup, picked_up, in_transit, delivered
 
   // Order Details
   String customerName = '';
@@ -33,110 +37,206 @@ class OrderTrackingController extends ChangeNotifier {
 
   // Timings
   DateTime? acceptedAt;
+  DateTime? reachedPickupAt;
   DateTime? pickedUpAt;
   DateTime? deliveredAt;
 
+  /// Load order details from backend
+  /// Note: This requires get_order_details.php endpoint to be created
   Future<void> loadOrderDetails(String orderId) async {
     isLoading = true;
     notifyListeners();
 
     try {
-      final response = await http.post(
-        Uri.parse('YOUR_API_URL/get_order_details.php'),
-        body: {
-          'order_id': orderId,
-          'delivery_partner_id': deliveryPartnerId,
-        },
-      );
+      debugPrint('📋 Loading order details for: $orderId');
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success']) {
-          final order = data['order'];
+      // TODO: Implement get_order_details.php endpoint on backend
+      // For now, order details come from the active orders list
+      // This method can be enhanced later when the endpoint is ready
 
-          orderStatus = order['status'] ?? 'accepted';
-          customerName = order['customer_name'] ?? '';
-          customerPhone = order['customer_phone'] ?? '';
-          deliveryAddress = order['delivery_address'] ?? '';
-          messName = order['mess_name'] ?? '';
-          messAddress = order['mess_address'] ?? '';
-          messPhone = order['mess_phone'] ?? '';
-          orderAmount = double.tryParse(order['total_amount'].toString()) ?? 0.0;
-          paymentMethod = order['payment_method'] ?? '';
-          items = List<Map<String, dynamic>>.from(order['items'] ?? []);
+      debugPrint('⚠️ get_order_details.php endpoint not implemented yet');
+      debugPrint('   Using order data from active orders list');
 
-          pickupLat = double.tryParse(order['pickup_lat']?.toString() ?? '');
-          pickupLng = double.tryParse(order['pickup_lng']?.toString() ?? '');
-          deliveryLat = double.tryParse(order['delivery_lat']?.toString() ?? '');
-          deliveryLng = double.tryParse(order['delivery_lng']?.toString() ?? '');
-
-          print('✅ Order details loaded: Status = $orderStatus');
-        }
-      }
     } catch (e) {
-      print('❌ Error loading order: $e');
+      debugPrint('❌ Error loading order: $e');
     }
 
     isLoading = false;
     notifyListeners();
   }
 
-  Future<bool> markPickedUp() async {
+  /// Mark as reached pickup location
+  Future<bool> markReachedPickup() async {
     try {
-      final response = await http.post(
-        Uri.parse('YOUR_API_URL/update_order_status.php'),
-        body: {
-          'action': 'picked_up',
-          'order_id': orderId,
-          'delivery_partner_id': deliveryPartnerId,
-        },
+      debugPrint('📍 Marking reached pickup for order $orderId...');
+
+      final result = await DeliveryService.markReachedPickup(
+        orderId: orderId,
+        deliveryPartnerId: deliveryPartnerId,
       );
 
-      final data = json.decode(response.body);
-      if (data['success']) {
+      if (result['success'] == true) {
+        orderStatus = 'reached_pickup';
+        reachedPickupAt = DateTime.now();
+        notifyListeners();
+        debugPrint('✅ Marked as reached pickup successfully');
+        return true;
+      } else {
+        debugPrint('❌ Failed to mark reached pickup: ${result['message']}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Error marking reached pickup: $e');
+      return false;
+    }
+  }
+
+  /// Mark order as picked up from mess/restaurant
+  Future<bool> markPickedUp() async {
+    try {
+      debugPrint('📦 Marking order $orderId as picked up...');
+
+      // Use DeliveryService which calls order_delivery_status.php
+      final result = await DeliveryService.markPickedUp(
+        orderId: orderId,
+        deliveryPartnerId: deliveryPartnerId,
+      );
+
+      if (result['success'] == true) {
         orderStatus = 'picked_up';
         pickedUpAt = DateTime.now();
         notifyListeners();
+        debugPrint('✅ Order marked as picked up successfully');
         return true;
+      } else {
+        debugPrint('❌ Failed to mark as picked up: ${result['message']}');
+        return false;
       }
     } catch (e) {
-      print('❌ Error marking picked up: $e');
+      debugPrint('❌ Error marking picked up: $e');
+      return false;
     }
-    return false;
   }
 
-  Future<bool> markDelivered() async {
+  /// Mark order as in transit (en route to customer)
+  Future<bool> markInTransit() async {
     try {
-      final response = await http.post(
-        Uri.parse('YOUR_API_URL/update_order_status.php'),
-        body: {
-          'action': 'delivered',
-          'order_id': orderId,
-          'delivery_partner_id': deliveryPartnerId,
-        },
+      debugPrint('🚚 Marking order $orderId as in transit...');
+
+      final result = await DeliveryService.markInTransit(
+        orderId: orderId,
+        deliveryPartnerId: deliveryPartnerId,
       );
 
-      final data = json.decode(response.body);
-      if (data['success']) {
+      if (result['success'] == true) {
+        orderStatus = 'in_transit';
+        notifyListeners();
+        debugPrint('✅ Order marked as in transit successfully');
+        return true;
+      } else {
+        debugPrint('❌ Failed to mark as in transit: ${result['message']}');
+        return false;
+      }
+    } catch (e) {
+      debugPrint('❌ Error marking in transit: $e');
+      return false;
+    }
+  }
+
+  /// Mark order as delivered to customer
+  Future<bool> markDelivered() async {
+    try {
+      debugPrint('✅ Marking order $orderId as delivered...');
+
+      // Use DeliveryService which calls order_delivery_status.php
+      final result = await DeliveryService.markDelivered(
+        orderId: orderId,
+        deliveryPartnerId: deliveryPartnerId,
+        notes: 'Delivered successfully',
+      );
+
+      if (result['success'] == true) {
         orderStatus = 'delivered';
         deliveredAt = DateTime.now();
         notifyListeners();
+        debugPrint('✅ Order marked as delivered successfully');
         return true;
+      } else {
+        debugPrint('❌ Failed to mark as delivered: ${result['message']}');
+        return false;
       }
     } catch (e) {
-      print('❌ Error marking delivered: $e');
+      debugPrint('❌ Error marking delivered: $e');
+      return false;
     }
-    return false;
   }
 
+  /// Get estimated delivery time based on distance
   String get estimatedDeliveryTime {
     // Calculate based on distance or return default
+    // TODO: Implement actual calculation based on pickup/delivery locations
     return '25-30 mins';
   }
 
+  /// Get total distance between pickup and delivery points
   double get totalDistance {
     // Calculate distance between pickup and delivery
+    // TODO: Implement haversine formula or use Google Distance Matrix API
     // For now, return dummy value
     return 5.2; // km
+  }
+
+  /// Set order details manually (useful when data comes from parent screen)
+  void setOrderDetails({
+    required String status,
+    required String custName,
+    required String custPhone,
+    required String delivAddress,
+    required String restaurant,
+    required String restaurantAddress,
+    required String restaurantPhone,
+    required double amount,
+    required String payment,
+    List<Map<String, dynamic>>? orderItems,
+    double? pickLat,
+    double? pickLng,
+    double? delivLat,
+    double? delivLng,
+  }) {
+    orderStatus = status;
+    customerName = custName;
+    customerPhone = custPhone;
+    deliveryAddress = delivAddress;
+    messName = restaurant;
+    messAddress = restaurantAddress;
+    messPhone = restaurantPhone;
+    orderAmount = amount;
+    paymentMethod = payment;
+    items = orderItems ?? [];
+    pickupLat = pickLat;
+    pickupLng = pickLng;
+    deliveryLat = delivLat;
+    deliveryLng = delivLng;
+    notifyListeners();
+  }
+
+  /// Check if order can be marked as reached pickup
+  bool canMarkReachedPickup() {
+    return orderStatus == 'accepted';
+  }
+
+  /// Check if order can be marked as picked up
+  bool canMarkPickedUp() {
+    return orderStatus == 'accepted' || orderStatus == 'reached_pickup';
+  }
+
+  /// Check if order can be marked as in transit
+  bool canMarkInTransit() {
+    return orderStatus == 'picked_up';
+  }
+
+  /// Check if order can be marked as delivered
+  bool canMarkDelivered() {
+    return orderStatus == 'picked_up' || orderStatus == 'in_transit';
   }
 }

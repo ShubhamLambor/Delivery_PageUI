@@ -215,6 +215,35 @@ class PickupScreen extends StatelessWidget {
 
           const SizedBox(height: 24),
 
+          // ✅ NEW: Reached Pickup Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => _markReachedPickup(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.location_on, size: 24),
+                  SizedBox(width: 12),
+                  Text(
+                    'Reached Mess for Pickup',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
           // Mark Picked Up Button
           SizedBox(
             width: double.infinity,
@@ -337,6 +366,25 @@ class PickupScreen extends StatelessWidget {
     }
   }
 
+  // ✅ NEW: Mark Reached Pickup method
+  Future<void> _markReachedPickup(BuildContext context) async {
+    final success = await controller.markReachedPickup();
+    if (success && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📍 Reached pickup location!'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Failed to update status'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
 
   Future<void> _markPickedUp(BuildContext context) async {
     final confirmed = await showDialog<bool>(
