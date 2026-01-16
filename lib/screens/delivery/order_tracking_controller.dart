@@ -1,6 +1,9 @@
 // lib/screens/delivery/order_tracking_controller.dart
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import '../../services/delivery_service.dart';
 
 class OrderTrackingController extends ChangeNotifier {
@@ -43,6 +46,7 @@ class OrderTrackingController extends ChangeNotifier {
 
   /// Load order details from backend
   /// Note: This requires get_order_details.php endpoint to be created
+  /// Load order details from backend
   Future<void> loadOrderDetails(String orderId) async {
     isLoading = true;
     notifyListeners();
@@ -50,12 +54,87 @@ class OrderTrackingController extends ChangeNotifier {
     try {
       debugPrint('📋 Loading order details for: $orderId');
 
-      // TODO: Implement get_order_details.php endpoint on backend
-      // For now, order details come from the active orders list
-      // This method can be enhanced later when the endpoint is ready
+      // Call the backend API
+      final response = await http.post(
+        Uri.parse('$baseUrl/delivery/get_order_details.php'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        encoding: Encoding.getByName('utf-8'),
+        body: {
+          'order_id': orderId,
+          'delivery_partner_id': deliveryPartnerId,
+        },
+      ).timeout(const Duration(seconds: 15));
 
-      debugPrint('⚠️ get_order_details.php endpoint not implemented yet');
-      debugPrint('   Using order data from active orders list');
+      debugPrint('📥 Response Status: ${response.statusCode}');
+      debugPrint('📥 Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+
+        if (data['success'] == true) {
+          final order = data['order'];
+
+          // Populate order details
+          orderStatus = order['status'] ?? 'accepted';
+          customerName = order['customer_name'] ?? '';
+          customerPhone = order['customer_phone'] ?? '';
+          deliveryAddress = order['delivery_address'] ?? '';
+          messName = order['mess_name'] ?? '';
+          messAddress = order['mess_address'] ?? '';
+          messPhone = order['mess_phone'] ?? '';
+          orderAmount = double.tryParse(order['total_amount'].toString()) ?? 0.0;
+          paymentMethod = order['payment_method'] ?? '';
+
+          // Parse coordinates
+          pickupLat = order['pickup_latitude'] != null
+              ? double.tryParse(order['pickup_latitude'].toString())
+              : null;
+          pickupLng = order['pickup_longitude'] != null
+              ? double.tryParse(order['pickup_longitude'].toString())
+              : null;
+          deliveryLat = order['delivery_latitude'] != null
+              ? double.tryParse(order['delivery_latitude'].toString())
+              : null;
+          deliveryLng = order['delivery_longitude'] != null
+              ? double.tryParse(order['delivery_longitude'].toString())
+              : null;
+
+          // Parse order items
+          if (order['items'] != null && order['items'] is List) {
+            items = (order['items'] as List).map((item) => {
+              'item_name': item['item_name'],
+              'quantity': item['quantity'],
+              'price': item['price'],
+              'subtotal': item['subtotal'],
+            }).toList();
+          }
+
+          // Parse timestamps
+          if (order['accepted_at'] != null) {
+            acceptedAt = DateTime.tryParse(order['accepted_at']);
+          }
+          if (order['picked_up_at'] != null) {
+            pickedUpAt = DateTime.tryParse(order['picked_up_at']);
+          }
+          if (order['delivered_at'] != null) {
+            deliveredAt = DateTime.tryParse(order['delivered_at']);
+          }
+
+          debugPrint('✅ Order details loaded successfully');
+          debugPrint('   Customer: $customerName');
+          debugPrint('   Mess: $messName');
+          debugPrint('   Amount: ₹$orderAmount');
+          debugPrint('   Items: ${items.length}');
+
+        } else {
+          debugPrint('❌ Failed to load order: ${data['message']}');
+        }
+      } else {
+        debugPrint('❌ HTTP Error: ${response.statusCode}');
+      }
 
     } catch (e) {
       debugPrint('❌ Error loading order: $e');
@@ -64,6 +143,7 @@ class OrderTrackingController extends ChangeNotifier {
     isLoading = false;
     notifyListeners();
   }
+
 
   /// Mark as reached pickup location
   Future<bool> markReachedPickup() async {

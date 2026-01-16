@@ -3,12 +3,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/locale_provider.dart';
+import '../settings/settings_page.dart';
 import 'profile_controller.dart';
 import 'widgets/profile_header.dart';
 import 'widgets/logout_button.dart';
 import 'pages/profile_pages.dart';
 
-// ✅ Changed to StatefulWidget
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
@@ -20,7 +20,6 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    // ✅ Refresh user data every time profile page opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final controller = context.read<ProfileController>();
       controller.refreshUserData();
@@ -57,7 +56,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     bottom: false,
                     child: Column(
                       children: [
-                        // Top Bar with Title
+                        // Top Bar with Title and Settings Icon
                         Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 20,
@@ -74,9 +73,15 @@ class _ProfilePageState extends State<ProfilePage> {
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
+                              // ✅ Settings icon button
                               IconButton(
                                 onPressed: () {
-                                  // Settings or Edit action
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => const SettingsPage(),
+                                    ),
+                                  );
                                 },
                                 icon: const Icon(
                                   Icons.settings_outlined,
@@ -88,7 +93,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                         ),
 
-                        // Profile Header Card (White card inside green section)
+                        // Profile Header Card
                         Padding(
                           padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                           child: ProfileHeader(controller: controller),
@@ -140,7 +145,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
 
-              // Extra Bottom Padding to avoid bottom nav overlap
+              // Extra Bottom Padding
               SliverPadding(
                 padding: EdgeInsets.only(
                   bottom: MediaQuery.of(context).padding.bottom + 80,
