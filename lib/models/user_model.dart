@@ -18,7 +18,7 @@ class UserModel {
     required this.email,
     required this.phone,
     required this.profilePic,
-    this.createdAt, // ✅ Fixed: removed 'final DateTime?'
+    this.createdAt,
     this.role = 'delivery',
     this.vehicleNumber,
     this.isEmailVerified = false,
@@ -89,7 +89,7 @@ class UserModel {
     String? email,
     String? phone,
     String? profilePic,
-    DateTime? createdAt, // ✅ Added this
+    DateTime? createdAt,
     String? role,
     String? vehicleNumber,
     bool? isEmailVerified,
@@ -161,7 +161,6 @@ class UserModel {
     }
   }
 
-  // ✅ NEW: Format registration date for display
   String get memberSince {
     if (createdAt == null) return 'Member since Jan 2024';
 
@@ -201,7 +200,7 @@ class UserModel {
     email.hashCode ^
     phone.hashCode ^
     profilePic.hashCode ^
-    createdAt.hashCode ^ // ✅ Added this
+    createdAt.hashCode ^
     role.hashCode ^
     vehicleNumber.hashCode ^
     isEmailVerified.hashCode ^

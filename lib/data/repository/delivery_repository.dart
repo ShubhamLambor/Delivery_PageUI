@@ -1,16 +1,14 @@
 // lib/data/repository/delivery_repository.dart
 
 import '../../models/delivery_model.dart';
-import 'dummy_data.dart';
 
 class DeliveryRepository {
-  // ✅ Store both dummy and real deliveries
+  // ✅ Only store real deliveries (removed dummy data completely)
   List<DeliveryModel> _realDeliveries = [];
-  bool _useRealData = false;
 
-  /// Get all deliveries (real or dummy)
+  /// Get all deliveries (only real data)
   List<DeliveryModel> getAllDeliveries() {
-    return _useRealData ? _realDeliveries : DummyData.deliveries;
+    return _realDeliveries;
   }
 
   /// Get pending deliveries (New + Pending status)
@@ -43,9 +41,8 @@ class DeliveryRepository {
     }
   }
 
-  /// ✅ NEW: Add or update a single delivery
+  /// Add or update a single delivery
   void addOrUpdateOrder(DeliveryModel delivery) {
-    _useRealData = true;
     final index = _realDeliveries.indexWhere((d) => d.id == delivery.id);
     if (index != -1) {
       _realDeliveries[index] = delivery;
@@ -54,26 +51,21 @@ class DeliveryRepository {
     }
   }
 
-  /// ✅ NEW: Replace all deliveries with fresh data
+  /// Replace all deliveries with fresh data
   void setDeliveries(List<DeliveryModel> deliveries) {
-    _useRealData = true;
     _realDeliveries = deliveries;
   }
 
-  /// ✅ NEW: Clear all real deliveries (back to dummy)
+  /// Clear all deliveries
   void clearDeliveries() {
     _realDeliveries.clear();
-    _useRealData = false;
   }
 
-  /// ✅ NEW: Remove specific delivery
+  /// Remove specific delivery
   void removeDelivery(String id) {
     _realDeliveries.removeWhere((d) => d.id == id);
   }
 
-  /// ✅ NEW: Check if using real data
-  bool get isUsingRealData => _useRealData;
-
-  /// ✅ NEW: Get count of real deliveries
+  /// Get count of real deliveries
   int get realDeliveryCount => _realDeliveries.length;
 }

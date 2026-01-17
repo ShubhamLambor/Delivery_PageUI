@@ -1,7 +1,7 @@
 class EarningModel {
-  final String date;      // YYYY-MM-DD
-  final int deliveries;   // number of deliveries that day
-  final int amount;       // amount earned that day
+  final String date;
+  final int deliveries;
+  final int amount;
 
   EarningModel({
     required this.date,

@@ -75,7 +75,6 @@ class DeliveryModel {
     );
   }
 
-  /// ✅ REMOVED _parseStatus - keep raw backend status
 
   /// ✅ Helper method to get display-friendly status for UI
   String get displayStatus {

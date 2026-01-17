@@ -1,7 +1,6 @@
 // lib/screens/home/home_controller.dart
 
 import 'package:flutter/material.dart';
-
 import '../../models/delivery_model.dart';
 import '../../services/delivery_service.dart';
 import '../../services/api_service.dart';
@@ -12,17 +11,21 @@ class HomeController extends ChangeNotifier {
 
   // REAL DATA from backend
   List<DeliveryModel> _allDeliveries = [];
-
   bool _isOnline = false;
   bool _isLoading = false;
   String? _errorMessage;
   String? _partnerId;
 
+  // ✅ NEW: Partner stats from backend
+  int _todayEarnings = 0;
+  int _completedToday = 0;
+  int _pendingToday = 0;
+  int _cancelledToday = 0;
+
   bool get isOnline => _isOnline;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   bool get isLocationTracking => _locationService.isTracking;
-
 
   // ✅ ADD THIS: Make partnerId accessible for comparison in main.dart
   String? get partnerId => _partnerId;
@@ -30,14 +33,20 @@ class HomeController extends ChangeNotifier {
   List<DeliveryModel> get allDeliveries => _allDeliveries;
   int get totalCount => _allDeliveries.length;
 
-  int get pendingCount =>
-      _allDeliveries.where((d) => d.status.toLowerCase() == 'pending').length;
+  // ✅ UPDATED: Use backend stats if available, otherwise count from deliveries
+  int get todayEarnings => _todayEarnings;
 
-  int get completedCount =>
-      _allDeliveries.where((d) => d.status.toLowerCase() == 'delivered').length;
+  int get pendingCount => _pendingToday > 0
+      ? _pendingToday
+      : _allDeliveries.where((d) => d.status.toLowerCase() == 'pending').length;
 
-  int get cancelledCount =>
-      _allDeliveries.where((d) => d.status.toLowerCase() == 'cancelled').length;
+  int get completedCount => _completedToday > 0
+      ? _completedToday
+      : _allDeliveries.where((d) => d.status.toLowerCase() == 'delivered').length;
+
+  int get cancelledCount => _cancelledToday > 0
+      ? _cancelledToday
+      : _allDeliveries.where((d) => d.status.toLowerCase() == 'cancelled').length;
 
   /// Current active delivery
   /// Current active delivery
@@ -45,7 +54,6 @@ class HomeController extends ChangeNotifier {
     debugPrint('═══════════════════════════════════════');
     debugPrint('🟢 CURRENT DELIVERY GETTER CALLED:');
     debugPrint('   All deliveries count: ${_allDeliveries.length}');
-
     if (_allDeliveries.isEmpty) {
       debugPrint('   ❌ NO DELIVERIES IN LIST');
       debugPrint('═══════════════════════════════════════');
@@ -60,19 +68,18 @@ class HomeController extends ChangeNotifier {
     final current = _allDeliveries.where((d) {
       final status = d.status.toLowerCase().trim();
       return status == 'accepted' ||
-          status == 'confirmed' ||  // ✅ ADDED: Delivery boy confirmed
+          status == 'confirmed' || // ✅ ADDED: Delivery boy confirmed
           status == 'picked_up' ||
           status == 'in_transit' ||
           status == 'ready' ||
-          status == 'waiting_for_order' ||  // ✅ ADDED
-          status == 'waiting_for_pickup' ||  // ✅ ADDED
+          status == 'waiting_for_order' || // ✅ ADDED
+          status == 'waiting_for_pickup' || // ✅ ADDED
           status == 'ready_for_pickup' ||
           status == 'at_pickup_location' ||
           status == 'out_for_delivery';
     }).toList();
 
     debugPrint('   Filtered current count: ${current.length}');
-
     if (current.isNotEmpty) {
       debugPrint('   ✅ FOUND CURRENT DELIVERY:');
       debugPrint('      ID: ${current.first.id}');
@@ -85,7 +92,6 @@ class HomeController extends ChangeNotifier {
     debugPrint('═══════════════════════════════════════');
     return current.isNotEmpty ? current.first : null;
   }
-
 
   /// Upcoming deliveries
   List<DeliveryModel> get upcomingDeliveries {
@@ -104,6 +110,44 @@ class HomeController extends ChangeNotifier {
     debugPrint('✅ [HOME_CONTROLLER] Partner ID set: $id');
   }
 
+  /// ✅ NEW: Fetch partner stats from backend
+  Future<void> fetchPartnerStats() async {
+    if (_partnerId == null || _partnerId!.isEmpty) {
+      debugPrint('❌ [HOME_CONTROLLER] Cannot fetch stats: Partner ID is null');
+      return;
+    }
+
+    try {
+      debugPrint('📊 [HOME_CONTROLLER] Fetching partner stats...');
+      final result = await DeliveryService.getPartnerStats(
+        deliveryPartnerId: _partnerId!,
+      );
+
+      if (result['success'] == true && result['stats'] != null) {
+        final stats = result['stats'];
+
+        // Parse stats from backend
+        _todayEarnings = int.tryParse(stats['today_earnings']?.toString() ?? '0') ?? 0;
+        _completedToday = int.tryParse(stats['completed_today']?.toString() ?? '0') ?? 0;
+        _pendingToday = int.tryParse(stats['pending_today']?.toString() ?? '0') ?? 0;
+        _cancelledToday = int.tryParse(stats['cancelled_today']?.toString() ?? '0') ?? 0;
+
+        debugPrint('✅ [HOME_CONTROLLER] Stats fetched successfully:');
+        debugPrint('   Today Earnings: ₹$_todayEarnings');
+        debugPrint('   Completed: $_completedToday');
+        debugPrint('   Pending: $_pendingToday');
+        debugPrint('   Cancelled: $_cancelledToday');
+
+        notifyListeners();
+      } else {
+        debugPrint('⚠️ [HOME_CONTROLLER] Stats not available from backend');
+      }
+    } catch (e) {
+      debugPrint('❌ [HOME_CONTROLLER] Error fetching stats: $e');
+      // Don't set error message, stats are optional
+    }
+  }
+
   /// Fetch deliveries from backend
   Future<void> fetchDeliveries() async {
     if (_partnerId == null || _partnerId!.isEmpty) {
@@ -113,13 +157,10 @@ class HomeController extends ChangeNotifier {
 
     try {
       debugPrint('📋 [HOME_CONTROLLER] Fetching deliveries for partner: $_partnerId');
-
       final data = await DeliveryService.getActiveDeliveries(_partnerId!);
-
       debugPrint('═══════════════════════════════════════');
       debugPrint('🔵 [HOME_CONTROLLER] FETCHED DELIVERIES FROM API:');
       debugPrint('   Total count: ${data.length}');
-
       if (data.isEmpty) {
         debugPrint('   ⚠️ No deliveries returned from API');
       } else {
@@ -127,11 +168,9 @@ class HomeController extends ChangeNotifier {
           debugPrint('   📦 Order ${delivery.id}: ${delivery.status}');
         }
       }
-
       _allDeliveries = data;
       debugPrint('   ✅ Updated _allDeliveries list with ${_allDeliveries.length} items');
       debugPrint('═══════════════════════════════════════');
-
       _errorMessage = null;
       notifyListeners();
       debugPrint('✅ [HOME_CONTROLLER] Deliveries fetched and notified');
@@ -153,7 +192,6 @@ class HomeController extends ChangeNotifier {
     }
 
     final newStatus = !_isOnline;
-
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -183,9 +221,9 @@ class HomeController extends ChangeNotifier {
               notifyListeners();
             },
           );
-
-          // Fetch deliveries when going online
+          // Fetch deliveries and stats when going online
           await fetchDeliveries();
+          await fetchPartnerStats();
         } else {
           debugPrint('🛑 Stopping location tracking...');
           _locationService.stopLocationTracking();
@@ -222,7 +260,6 @@ class HomeController extends ChangeNotifier {
             statusValue == '1' ||
             statusValue == true ||
             statusValue == 'online';
-
         debugPrint('✅ Fetched status: ${_isOnline ? 'Online' : 'Offline'}');
 
         if (_isOnline) {
@@ -249,10 +286,10 @@ class HomeController extends ChangeNotifier {
   Future<void> initialize(String partnerId) async {
     debugPrint('🚀 [HOME_CONTROLLER] Initializing for partner: $partnerId');
     _partnerId = partnerId;
-
     try {
       await fetchOnlineStatus();
       await fetchDeliveries();
+      await fetchPartnerStats(); // ✅ NEW: Fetch stats on init
       debugPrint('✅ [HOME_CONTROLLER] Initialized successfully');
       debugPrint('   Final delivery count: ${_allDeliveries.length}');
     } catch (e) {
@@ -268,6 +305,7 @@ class HomeController extends ChangeNotifier {
     try {
       await fetchOnlineStatus();
       await fetchDeliveries();
+      await fetchPartnerStats(); // ✅ NEW: Refresh stats too
       debugPrint('✅ [HOME_CONTROLLER] All data refreshed');
     } catch (e) {
       debugPrint('❌ [HOME_CONTROLLER] Error refreshing data: $e');

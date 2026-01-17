@@ -111,9 +111,9 @@ class _HomePageState extends State<HomePage> {
           // Stop polling while dialog is open
           timer.cancel();
 
-          // ✅ Check mounted before showing dialog
+          // ✅ FIX: Cast Map to Map<String, dynamic>
           if (mounted) {
-            showNewOrderDialog(assignment);
+            showNewOrderDialog(Map<String, dynamic>.from(assignment));
           }
         }
       } catch (e) {
@@ -131,8 +131,62 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// ✅ NEW: Pull-to-refresh functionality
+  Future<void> _handleRefresh() async {
+    if (!mounted) return;
+
+    debugPrint('🔄 Manual refresh triggered...');
+
+    final home = context.read<HomeController>();
+    final deliveries = context.read<DeliveriesController>();
+
+    try {
+      // Refresh all data in parallel
+      await Future.wait([
+        home.refresh(),
+        deliveries.fetchDeliveries(),
+      ]);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Text('Data refreshed successfully!'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      debugPrint('✅ Manual refresh completed');
+    } catch (e) {
+      debugPrint('❌ Error during manual refresh: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Text('Failed to refresh data'),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   /// Show new order dialog with Accept/Reject options
-  void showNewOrderDialog(Map<dynamic, dynamic> assignment) {
+  void showNewOrderDialog(Map<String, dynamic> assignment) {
     if (!mounted) return;
 
     final auth = context.read<AuthController>();
@@ -175,7 +229,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const SizedBox(height: 20),
-
             // Order Details
             _buildDetailRow(
               Icons.shopping_bag,
@@ -202,7 +255,6 @@ class _HomePageState extends State<HomePage> {
               assignment['total_amount']?.toString() ?? '0',
             ),
             const SizedBox(height: 24),
-
             // Action Buttons
             Row(
               children: [
@@ -229,7 +281,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(width: 12),
-
                 // Accept Button
                 Expanded(
                   flex: 2,
@@ -301,7 +352,6 @@ class _HomePageState extends State<HomePage> {
   /// Handle accept from dialog
   Future<void> _handleAcceptFromDialog(String orderId, String partnerId) async {
     debugPrint('✅ Accepting order from dialog: $orderId');
-
     try {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -426,7 +476,6 @@ class _HomePageState extends State<HomePage> {
   /// Handle reject from dialog
   Future<void> _handleRejectFromDialog(String orderId, String partnerId) async {
     debugPrint('❌ Rejecting order from dialog: $orderId');
-
     try {
       final result = await DeliveryService.rejectOrder(
         orderId: orderId,
@@ -784,10 +833,8 @@ class _HomePageState extends State<HomePage> {
   /// ✅ FIXED: Handle Accept Order (from NewOrderCard)
   void handleAcceptOrder(BuildContext context, String orderId) async {
     final deliveriesController = context.read<DeliveriesController>();
-
     try {
-      final success = await deliveriesController.acceptOrder(orderId); // ✅ FIXED
-
+      final success = await deliveriesController.acceptOrder(orderId);
       if (mounted && success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -801,7 +848,7 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text((deliveriesController.errorMessage?.isNotEmpty ?? false) // ✅ FIXED
+            content: Text((deliveriesController.errorMessage?.isNotEmpty ?? false)
                 ? deliveriesController.errorMessage!
                 : 'Failed to accept order'),
             backgroundColor: Colors.red,
@@ -835,11 +882,9 @@ class _HomePageState extends State<HomePage> {
 
     if (confirm == true && mounted) {
       final deliveriesController = context.read<DeliveriesController>();
-
       try {
-        final success = await deliveriesController.rejectOrder(
-            orderId, reason: 'User declined'); // ✅ FIXED
-
+        final success = await deliveriesController.rejectOrder(orderId,
+            reason: 'User declined');
         if (mounted && success) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -853,7 +898,7 @@ class _HomePageState extends State<HomePage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text((deliveriesController.errorMessage?.isNotEmpty ?? false) // ✅ FIXED
+              content: Text((deliveriesController.errorMessage?.isNotEmpty ?? false)
                   ? deliveriesController.errorMessage!
                   : 'Failed to reject order'),
               backgroundColor: Colors.red,
@@ -892,178 +937,268 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // ===== HEADER SECTION =====
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeInOut,
-              height: 240,
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: isOnline
-                      ? [const Color(0xFF2E7D32), const Color(0xFF4CAF50)]
-                      : [const Color(0xFFC62828), const Color(0xFFEF5350)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+      body: RefreshIndicator(
+        onRefresh: _handleRefresh,
+        color: Colors.green,
+        backgroundColor: Colors.white,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              // ===== HEADER SECTION =====
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 500),
+                curve: Curves.easeInOut,
+                height: 240,
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isOnline
+                        ? [const Color(0xFF2E7D32), const Color(0xFF4CAF50)]
+                        : [const Color(0xFFC62828), const Color(0xFFEF5350)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(30),
+                    bottomRight: Radius.circular(30),
+                  ),
                 ),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // User Name & Date
-                      Flexible(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Hello, $userName',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // User Name & Date
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Hello, $userName',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              overflow: TextOverflow.ellipsis,
+                              const SizedBox(height: 4),
+                              Text(
+                                dateStr,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Action Icons
+                        Row(
+                          children: [
+                            // ❌ REMOVED: Refresh Button
+                            // Chat Button
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: IconButton(
+                                icon: const Icon(
+                                  Icons.support_agent,
+                                  color: Colors.white,
+                                  size: 26,
+                                ),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => const ChatbotPage(),
+                                    ),
+                                  );
+                                },
+                                tooltip: 'Support Assistant',
+                              ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              dateStr,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.9),
-                                fontSize: 14,
+                            const SizedBox(width: 8),
+                            // Profile Icon
+                            Container(
+                              padding: const EdgeInsets.all(2),
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
+                              ),
+                              child: CircleAvatar(
+                                radius: 20,
+                                backgroundColor: Colors.white,
+                                child: Icon(
+                                  Icons.person,
+                                  color: isOnline ? Colors.green : Colors.red,
+                                ),
                               ),
                             ),
                           ],
                         ),
-                      ),
-
-                      // Action Icons
-                      Row(
-                        children: [
-                          // Chat Button
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
-                              shape: BoxShape.circle,
-                            ),
-                            child: IconButton(
-                              icon: const Icon(
-                                Icons.support_agent,
-                                color: Colors.white,
-                                size: 26,
-                              ),
-                              onPressed: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => const ChatbotPage(),
-                                  ),
-                                );
-                              },
-                              tooltip: 'Support Assistant',
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-
-                          // Profile Icon
-                          Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: const BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                            ),
-                            child: CircleAvatar(
-                              radius: 20,
-                              backgroundColor: Colors.white,
-                              child: Icon(
-                                Icons.person,
-                                color: isOnline ? Colors.green : Colors.red,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Swipe Toggle Button
-                  _SwipeToggleButton(
-                    isOnline: isOnline,
-                    onToggle: home.isLoading ? null : home.toggleOnline,
-                  ),
-                ],
-              ),
-            ),
-
-            // ===== STATS GRID =====
-            Transform.translate(
-              offset: const Offset(0, -60),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: GridView.count(
-                  shrinkWrap: true,
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 1.6,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    _buildStatCard(
-                      'Today\'s Earnings',
-                      '₹320',
-                      Icons.currency_rupee,
-                      Colors.orange,
+                      ],
                     ),
-                    _buildStatCard(
-                      'Completed',
-                      completed.toString(),
-                      Icons.check_circle,
-                      Colors.green,
-                    ),
-                    _buildStatCard(
-                      'Pending',
-                      pending.toString(),
-                      Icons.access_time,
-                      Colors.blue,
-                    ),
-                    _buildStatCard(
-                      'Cancelled',
-                      cancelled.toString(),
-                      Icons.cancel,
-                      Colors.red,
+                    const SizedBox(height: 20),
+                    // Swipe Toggle Button
+                    _SwipeToggleButton(
+                      isOnline: isOnline,
+                      onToggle: home.isLoading ? null : home.toggleOnline,
                     ),
                   ],
                 ),
               ),
-            ),
 
-            // ===== MAIN CONTENT =====
-            Transform.translate(
-              offset: const Offset(0, -80),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // NEW ORDERS
-                    if (newOrders.isNotEmpty) ...[
+
+              // ===== STATS GRID =====
+              Transform.translate(
+                offset: const Offset(0, -60),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: GridView.count(
+                    shrinkWrap: true,
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 1.6,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      _buildStatCard(
+                        'Today\'s Earnings',
+                        '₹${home.todayEarnings}',
+                        Icons.currency_rupee,
+                        Colors.orange,
+                      ),
+                      _buildStatCard(
+                        'Completed',
+                        completed.toString(),
+                        Icons.check_circle,
+                        Colors.green,
+                      ),
+                      _buildStatCard(
+                        'Pending',
+                        pending.toString(),
+                        Icons.access_time,
+                        Colors.blue,
+                      ),
+                      _buildStatCard(
+                        'Cancelled',
+                        cancelled.toString(),
+                        Icons.cancel,
+                        Colors.red,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ===== MAIN CONTENT =====
+              Transform.translate(
+                offset: const Offset(0, -80),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // NEW ORDERS
+                      if (newOrders.isNotEmpty) ...[
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'New Orders',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.orange,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${newOrders.length}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ...newOrders.map((order) {
+                          return NewOrderCard(
+                            order: order,
+                            onAccept: () => handleAcceptOrder(context, order.id),
+                            onReject: () => handleRejectOrder(context, order.id),
+                          );
+                        }).toList(),
+                        const SizedBox(height: 24),
+                      ],
+
+                      // ACTIVE DELIVERY
+                      const Text(
+                        'Active Delivery',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      if (current != null)
+                        CurrentDeliveryCard(
+                          key: ValueKey('active_${current.id}'),
+                          delivery: current,
+                          onCall: () {
+                            debugPrint(
+                                '📞 Calling customer: ${current.customerName}');
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Call functionality coming soon!'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                          onPickedUp: () =>
+                              _handleMarkPickedUp(context, current.id),
+                          onInTransit: () =>
+                              _handleMarkInTransit(context, current.id),
+                          onDelivered: () =>
+                              _handleMarkDelivered(context, current.id),
+                        )
+                      else
+                        _buildEmptyActiveDelivery(isOnline),
+                      const SizedBox(height: 24),
+
+                      // NEXT PICKUP
+                      const Text(
+                        'Next Pickup',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildPickupCard(),
+                      const SizedBox(height: 24),
+
+                      // UPCOMING ORDERS
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
-                            'New Orders',
+                            'Upcoming Orders',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
@@ -1075,13 +1210,13 @@ class _HomePageState extends State<HomePage> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.orange,
+                              color: Colors.green.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(
-                              '${newOrders.length}',
+                              '${upcoming.length}',
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: Colors.green,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -1089,127 +1224,35 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      ...newOrders.map((order) {
-                        return NewOrderCard(
-                          order: order,
-                          onAccept: () => handleAcceptOrder(context, order.id),
-                          onReject: () => handleRejectOrder(context, order.id),
-                        );
-                      }).toList(),
-                      const SizedBox(height: 24),
+                      if (upcoming.isEmpty)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Text(
+                              'No upcoming orders',
+                              style: TextStyle(color: Colors.grey[500]),
+                            ),
+                          ),
+                        )
+                      else
+                        Column(
+                          children: upcoming
+                              .map((d) => UpcomingTile(delivery: d))
+                              .toList(),
+                        ),
+                      const SizedBox(height: 100),
                     ],
-
-                    // ACTIVE DELIVERY
-                    const Text(
-                      'Active Delivery',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    if (current != null)
-                      CurrentDeliveryCard(
-                        key: ValueKey('active_${current.id}'),
-                        delivery: current,
-                        onCall: () {
-                          debugPrint(
-                              '📞 Calling customer: ${current.customerName}');
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Call functionality coming soon!'),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        },
-                        onPickedUp: () =>
-                            _handleMarkPickedUp(context, current.id),
-                        onInTransit: () =>
-                            _handleMarkInTransit(context, current.id),
-                        onDelivered: () =>
-                            _handleMarkDelivered(context, current.id),
-                      )
-                    else
-                      _buildEmptyActiveDelivery(isOnline),
-
-                    const SizedBox(height: 24),
-
-                    // NEXT PICKUP
-                    const Text(
-                      'Next Pickup',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _buildPickupCard(),
-
-                    const SizedBox(height: 24),
-
-                    // UPCOMING ORDERS
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Upcoming Orders',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            '${upcoming.length}',
-                            style: const TextStyle(
-                              color: Colors.green,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-
-                    if (upcoming.isEmpty)
-                      Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Text(
-                            'No upcoming orders',
-                            style: TextStyle(color: Colors.grey[500]),
-                          ),
-                        ),
-                      )
-                    else
-                      Column(
-                        children: upcoming
-                            .map((d) => UpcomingTile(delivery: d))
-                            .toList(),
-                      ),
-
-                    const SizedBox(height: 100),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   // ===== UI HELPER WIDGETS =====
-
   Widget _buildStatCard(
       String title, String value, IconData icon, Color color) {
     return Container(
@@ -1481,7 +1524,6 @@ class _HomePageState extends State<HomePage> {
 }
 
 // ===== SWIPE TOGGLE BUTTON =====
-
 class _SwipeToggleButton extends StatefulWidget {
   final bool isOnline;
   final VoidCallback? onToggle;

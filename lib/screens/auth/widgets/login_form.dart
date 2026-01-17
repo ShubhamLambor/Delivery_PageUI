@@ -46,9 +46,6 @@ class _LoginFormState extends State<LoginForm> {
 
   @override
   Widget build(BuildContext context) {
-    // IMPORTANT: The LoginForm is now just the Card content + Header integration
-    // It assumes it's being placed inside a Scaffold by the parent page or renders its own structure.
-    // Based on your request, I will make this widget render the FULL SCREEN layout to ensure the design matches.
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
