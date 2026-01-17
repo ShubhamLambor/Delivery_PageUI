@@ -27,6 +27,7 @@ dependencies:
   image: ^4.1.7
   lottie: ^3.0.0  # for animations
   get: ^4.6.6
+  slide_to_act: ^2.0.1
 
 dev_dependencies:
   flutter_native_splash: ^2.3.5

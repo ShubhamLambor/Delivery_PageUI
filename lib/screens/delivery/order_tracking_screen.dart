@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'order_tracking_controller.dart';
 
-class OrderTrackingScreen extends StatefulWidget {
+class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
   final String deliveryPartnerId;
 
@@ -17,25 +17,12 @@ class OrderTrackingScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
-}
-
-class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<OrderTrackingController>().loadOrderDetails(widget.orderId);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => OrderTrackingController(
-        orderId: widget.orderId,
-        deliveryPartnerId: widget.deliveryPartnerId,
-      ),
+        orderId: orderId,
+        deliveryPartnerId: deliveryPartnerId,
+      )..loadOrderDetails(orderId),  // ✅ Call loadOrderDetails here
       child: Consumer<OrderTrackingController>(
         builder: (context, controller, _) {
           if (controller.isLoading) {
@@ -67,19 +54,38 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   }
 
   Widget _buildContentForStatus(OrderTrackingController controller) {
-    switch (controller.orderStatus) {
+    switch (controller.orderStatus.toLowerCase()) {
       case 'accepted':
-      case 'out_for_delivery':
+      case 'confirmed':  // ✅ ADDED: Handle confirmed status
+      case 'waiting_for_order':  // ✅ ADDED
+      case 'waiting_for_pickup':  // ✅ ADDED
+      case 'ready':
+      case 'ready_for_pickup':
+      case 'at_pickup_location':
         return PickupScreen(controller: controller);
 
       case 'picked_up':
+      case 'out_for_delivery':
+      case 'in_transit':
         return NavigationScreen(controller: controller);
 
       case 'delivered':
         return DeliveryConfirmationScreen(controller: controller);
 
       default:
-        return const Center(child: Text('Unknown status'));
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.info_outline, size: 80, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(
+                'Unknown status: ${controller.orderStatus}',
+                style: const TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ],
+          ),
+        );
     }
   }
 }

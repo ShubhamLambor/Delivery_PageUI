@@ -40,6 +40,7 @@ class HomeController extends ChangeNotifier {
       _allDeliveries.where((d) => d.status.toLowerCase() == 'cancelled').length;
 
   /// Current active delivery
+  /// Current active delivery
   DeliveryModel? get currentDelivery {
     debugPrint('═══════════════════════════════════════');
     debugPrint('🟢 CURRENT DELIVERY GETTER CALLED:');
@@ -59,9 +60,12 @@ class HomeController extends ChangeNotifier {
     final current = _allDeliveries.where((d) {
       final status = d.status.toLowerCase().trim();
       return status == 'accepted' ||
+          status == 'confirmed' ||  // ✅ ADDED: Delivery boy confirmed
           status == 'picked_up' ||
           status == 'in_transit' ||
           status == 'ready' ||
+          status == 'waiting_for_order' ||  // ✅ ADDED
+          status == 'waiting_for_pickup' ||  // ✅ ADDED
           status == 'ready_for_pickup' ||
           status == 'at_pickup_location' ||
           status == 'out_for_delivery';
@@ -77,10 +81,11 @@ class HomeController extends ChangeNotifier {
     } else {
       debugPrint('   ❌ NO CURRENT DELIVERY FOUND');
     }
-    debugPrint('═══════════════════════════════════════');
 
+    debugPrint('═══════════════════════════════════════');
     return current.isNotEmpty ? current.first : null;
   }
+
 
   /// Upcoming deliveries
   List<DeliveryModel> get upcomingDeliveries {

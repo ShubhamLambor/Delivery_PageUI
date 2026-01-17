@@ -1,10 +1,8 @@
 // lib/screens/delivery/order_tracking_controller.dart
-
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import '../../services/delivery_service.dart';
+import '../../../services/delivery_service.dart';
 
 class OrderTrackingController extends ChangeNotifier {
   final String orderId;
@@ -18,8 +16,9 @@ class OrderTrackingController extends ChangeNotifier {
     required this.deliveryPartnerId,
   });
 
+  // State
   bool isLoading = false;
-  String orderStatus = 'accepted'; // accepted, reached_pickup, picked_up, in_transit, delivered
+  String orderStatus = 'accepted'; // accepted, ready, at_pickup_location, out_for_delivery, delivered
 
   // Order Details
   String customerName = '';
@@ -44,8 +43,6 @@ class OrderTrackingController extends ChangeNotifier {
   DateTime? pickedUpAt;
   DateTime? deliveredAt;
 
-  /// Load order details from backend
-  /// Note: This requires get_order_details.php endpoint to be created
   /// Load order details from backend
   Future<void> loadOrderDetails(String orderId) async {
     isLoading = true;
@@ -105,7 +102,7 @@ class OrderTrackingController extends ChangeNotifier {
           // Parse order items
           if (order['items'] != null && order['items'] is List) {
             items = (order['items'] as List).map((item) => {
-              'item_name': item['item_name'],
+              'name': item['item_name'],
               'quantity': item['quantity'],
               'price': item['price'],
               'subtotal': item['subtotal'],
@@ -127,15 +124,14 @@ class OrderTrackingController extends ChangeNotifier {
           debugPrint('   Customer: $customerName');
           debugPrint('   Mess: $messName');
           debugPrint('   Amount: ₹$orderAmount');
+          debugPrint('   Status: $orderStatus');
           debugPrint('   Items: ${items.length}');
-
         } else {
           debugPrint('❌ Failed to load order: ${data['message']}');
         }
       } else {
         debugPrint('❌ HTTP Error: ${response.statusCode}');
       }
-
     } catch (e) {
       debugPrint('❌ Error loading order: $e');
     }
@@ -144,11 +140,10 @@ class OrderTrackingController extends ChangeNotifier {
     notifyListeners();
   }
 
-
   /// Mark as reached pickup location
   Future<bool> markReachedPickup() async {
     try {
-      debugPrint('📍 Marking reached pickup for order $orderId...');
+      debugPrint('📍 Marking reached pickup for order: $orderId...');
 
       final result = await DeliveryService.markReachedPickup(
         orderId: orderId,
@@ -156,10 +151,18 @@ class OrderTrackingController extends ChangeNotifier {
       );
 
       if (result['success'] == true) {
-        orderStatus = 'reached_pickup';
+        // ✅ UPDATE STATUS BASED ON BACKEND RESPONSE
+        // Backend may return 'ready' if order is already ready
+        // or 'at_pickup_location' if order not ready yet
+
+        // Reload order details to get updated status
+        await loadOrderDetails(orderId);
+
         reachedPickupAt = DateTime.now();
         notifyListeners();
+
         debugPrint('✅ Marked as reached pickup successfully');
+        debugPrint('   New status: $orderStatus');
         return true;
       } else {
         debugPrint('❌ Failed to mark reached pickup: ${result['message']}');
@@ -183,9 +186,10 @@ class OrderTrackingController extends ChangeNotifier {
       );
 
       if (result['success'] == true) {
-        orderStatus = 'picked_up';
+        orderStatus = 'out_for_delivery'; // Backend sets this status
         pickedUpAt = DateTime.now();
         notifyListeners();
+
         debugPrint('✅ Order marked as picked up successfully');
         return true;
       } else {
@@ -201,7 +205,7 @@ class OrderTrackingController extends ChangeNotifier {
   /// Mark order as in transit (en route to customer)
   Future<bool> markInTransit() async {
     try {
-      debugPrint('🚚 Marking order $orderId as in transit...');
+      debugPrint('🚗 Marking order $orderId as in transit...');
 
       final result = await DeliveryService.markInTransit(
         orderId: orderId,
@@ -211,6 +215,7 @@ class OrderTrackingController extends ChangeNotifier {
       if (result['success'] == true) {
         orderStatus = 'in_transit';
         notifyListeners();
+
         debugPrint('✅ Order marked as in transit successfully');
         return true;
       } else {
@@ -226,7 +231,7 @@ class OrderTrackingController extends ChangeNotifier {
   /// Mark order as delivered to customer
   Future<bool> markDelivered() async {
     try {
-      debugPrint('✅ Marking order $orderId as delivered...');
+      debugPrint('🎉 Marking order $orderId as delivered...');
 
       // Use DeliveryService which calls order_delivery_status.php
       final result = await DeliveryService.markDelivered(
@@ -239,6 +244,7 @@ class OrderTrackingController extends ChangeNotifier {
         orderStatus = 'delivered';
         deliveredAt = DateTime.now();
         notifyListeners();
+
         debugPrint('✅ Order marked as delivered successfully');
         return true;
       } else {
@@ -259,11 +265,11 @@ class OrderTrackingController extends ChangeNotifier {
   }
 
   /// Get total distance between pickup and delivery points
-  double get totalDistance {
+  String get totalDistance {
     // Calculate distance between pickup and delivery
     // TODO: Implement haversine formula or use Google Distance Matrix API
     // For now, return dummy value
-    return 5.2; // km
+    return '5.2 km';
   }
 
   /// Set order details manually (useful when data comes from parent screen)
@@ -302,21 +308,25 @@ class OrderTrackingController extends ChangeNotifier {
 
   /// Check if order can be marked as reached pickup
   bool canMarkReachedPickup() {
-    return orderStatus == 'accepted';
+    return orderStatus == 'accepted' || orderStatus == 'confirmed';
   }
 
   /// Check if order can be marked as picked up
   bool canMarkPickedUp() {
-    return orderStatus == 'accepted' || orderStatus == 'reached_pickup';
+    return orderStatus == 'ready' ||
+        orderStatus == 'at_pickup_location' ||
+        orderStatus == 'reached_pickup';
   }
 
   /// Check if order can be marked as in transit
   bool canMarkInTransit() {
-    return orderStatus == 'picked_up';
+    return orderStatus == 'out_for_delivery' || orderStatus == 'picked_up';
   }
 
   /// Check if order can be marked as delivered
   bool canMarkDelivered() {
-    return orderStatus == 'picked_up' || orderStatus == 'in_transit';
+    return orderStatus == 'out_for_delivery' ||
+        orderStatus == 'picked_up' ||
+        orderStatus == 'in_transit';
   }
 }

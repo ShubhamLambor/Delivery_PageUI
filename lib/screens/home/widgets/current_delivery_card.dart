@@ -150,24 +150,58 @@ class CurrentDeliveryCard extends StatelessWidget {
         displayText = 'Accepted';
         icon = Icons.check_circle_outline;
         break;
+
+      case 'confirmed':  // ✅ ADDED
+        bgColor = Colors.green.shade50;
+        textColor = Colors.green.shade700;
+        displayText = 'Confirmed';
+        icon = Icons.verified_outlined;
+        break;
+
+      case 'waiting_for_order':  // ✅ ADDED
+        bgColor = Colors.amber.shade50;
+        textColor = Colors.amber.shade700;
+        displayText = 'Waiting for Order';
+        icon = Icons.hourglass_empty;
+        break;
+
+      case 'waiting_for_pickup':  // ✅ ADDED
+        bgColor = Colors.purple.shade50;
+        textColor = Colors.purple.shade700;
+        displayText = 'Ready for Pickup';
+        icon = Icons.shopping_bag;
+        break;
+
+      case 'ready':
+      case 'ready_for_pickup':
+        bgColor = Colors.purple.shade50;
+        textColor = Colors.purple.shade700;
+        displayText = 'Ready';
+        icon = Icons.shopping_bag;
+        break;
+
       case 'picked_up':
+      case 'out_for_delivery':
         bgColor = Colors.orange.shade50;
         textColor = Colors.orange.shade700;
         displayText = 'Picked Up';
         icon = Icons.inventory_2_outlined;
         break;
+
       case 'in_transit':
         bgColor = Colors.purple.shade50;
         textColor = Colors.purple.shade700;
         displayText = 'In Transit';
         icon = Icons.local_shipping_outlined;
         break;
+
       case 'delivered':
         bgColor = Colors.green.shade50;
         textColor = Colors.green.shade700;
         displayText = 'Delivered';
         icon = Icons.check_circle;
         break;
+
       default:
         bgColor = Colors.grey.shade100;
         textColor = Colors.grey.shade700;
@@ -198,6 +232,7 @@ class CurrentDeliveryCard extends StatelessWidget {
       ),
     );
   }
+
 
   /// Build Info Row
   Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
@@ -247,10 +282,16 @@ class CurrentDeliveryCard extends StatelessWidget {
   Widget _buildActionButtons(BuildContext context, String status) {
     switch (status.toLowerCase()) {
       case 'accepted':
+      case 'confirmed':  // ✅ ADDED: Handle confirmed status
       case 'pending':
+      case 'waiting_for_order':  // ✅ ADDED
+      case 'waiting_for_pickup':  // ✅ ADDED
+      case 'ready':
+      case 'ready_for_pickup':
         return _buildAcceptedActions(context);
 
       case 'picked_up':
+      case 'out_for_delivery':
         return _buildPickedUpActions(context);
 
       case 'in_transit':
@@ -260,6 +301,7 @@ class CurrentDeliveryCard extends StatelessWidget {
         return const SizedBox.shrink();
     }
   }
+
 
   /// Actions when order is "Accepted" (need to pick up)
   Widget _buildAcceptedActions(BuildContext context) {
