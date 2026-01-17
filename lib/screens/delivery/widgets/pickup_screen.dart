@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:slide_to_act/slide_to_act.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../map/osm_navigation_screen.dart';
 import '../order_tracking_controller.dart';
 
 class PickupScreen extends StatefulWidget {
@@ -15,7 +16,8 @@ class PickupScreen extends StatefulWidget {
   State<PickupScreen> createState() => _PickupScreenState();
 }
 
-class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderStateMixin {
+class _PickupScreenState extends State<PickupScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -27,16 +29,13 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
       vsync: this,
       duration: const Duration(milliseconds: 500),
     );
-
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
-
     _slideAnimation = Tween<Offset>(
       begin: const Offset(0, 0.3),
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
-
     _animationController.forward();
   }
 
@@ -57,11 +56,11 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ==================== Header ====================
+              // Header
               _buildHeader(),
               const SizedBox(height: 24),
 
-              // ==================== Mess Details Card ====================
+              // Mess Details Card
               _buildInfoCard(
                 title: 'Pickup Location',
                 icon: Icons.location_on,
@@ -88,9 +87,12 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () => _openMaps(
+                          // ✅ UPDATED: Open OSM Navigation
+                          onPressed: () => _openOSMNavigation(
+                            context,
                             widget.controller.pickupLat,
                             widget.controller.pickupLng,
+                            widget.controller.messName,
                           ),
                           icon: const Icon(Icons.navigation, size: 18),
                           label: const Text('Navigate'),
@@ -105,10 +107,9 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
 
-              // ==================== Order Items Card ====================
+              // Order Items Card
               _buildInfoCard(
                 title: 'Order Items',
                 icon: Icons.shopping_bag,
@@ -202,10 +203,9 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
 
-              // ==================== Delivery Address ====================
+              // Delivery Address
               _buildInfoCard(
                 title: 'Delivery Address',
                 icon: Icons.home,
@@ -216,10 +216,9 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
                   _buildInfoRow(Icons.phone, widget.controller.customerPhone),
                 ],
               ),
-
               const SizedBox(height: 24),
 
-              // ==================== ACTION SLIDERS - STEP BY STEP ====================
+              // ACTION SLIDERS - STEP BY STEP
               _buildActionSliders(),
             ],
           ),
@@ -230,10 +229,14 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
 
   // ==================== BUILD ACTION SLIDERS ====================
   Widget _buildActionSliders() {
-    final status = widget.controller.orderStatus.toLowerCase();
+    final status = widget.controller.orderStatus.toLowerCase().trim();
 
-    // Step 1: If status is 'accepted' or 'confirmed' -> Show "Reached Pickup" slider
-    if (status == 'accepted' || status == 'confirmed') {
+    // ✅ Step 1: Show "Reached Pickup" slider
+    if (status == 'accepted' ||
+        status == 'confirmed' ||
+        status == 'waiting_for_order' ||
+        status == 'waiting_for_pickup' ||
+        status == '') {
       return Column(
         children: [
           _buildStepIndicator('Step 1 of 3', 'Mark when you reach the mess'),
@@ -261,8 +264,9 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
       );
     }
 
-    // Step 2: If status is 'ready' or 'at_pickup_location' -> Show "Mark Picked Up" slider
+    // ✅ Step 2: Show "Mark Picked Up" slider
     if (status == 'ready' ||
+        status == 'ready_for_pickup' ||
         status == 'at_pickup_location' ||
         status == 'atpickuplocation' ||
         status == 'reached_pickup' ||
@@ -294,7 +298,7 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
       );
     }
 
-    // Step 3: If status is 'out_for_delivery' or 'pickedup' -> Show "Mark Delivered" slider
+    // ✅ Step 3: Show "Mark Delivered" slider
     if (status == 'out_for_delivery' ||
         status == 'outfordelivery' ||
         status == 'picked_up' ||
@@ -355,7 +359,7 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
       );
     }
 
-    // Default: Unknown status
+    // ✅ Default: Unknown status
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -368,7 +372,7 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
           const Icon(Icons.info_outline, color: Colors.grey, size: 32),
           const SizedBox(height: 8),
           Text(
-            'Unknown status: $status',
+            'Unknown status: "$status"',
             style: const TextStyle(fontSize: 14, color: Colors.grey),
           ),
           const SizedBox(height: 8),
@@ -533,11 +537,9 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
   }
 
   // ==================== ACTION METHODS ====================
-
   Future<void> _markReachedPickup(BuildContext context) async {
     try {
       final success = await widget.controller.markReachedPickup();
-
       if (success && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -552,11 +554,8 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
             behavior: SnackBarBehavior.floating,
           ),
         );
-
-        // Trigger animation for next slider
         _animationController.reset();
         _animationController.forward();
-
         setState(() {});
       } else if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -579,7 +578,6 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
   }
 
   Future<void> _markPickedUp(BuildContext context) async {
-    // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -601,7 +599,6 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
 
     if (confirmed == true) {
       final success = await widget.controller.markPickedUp();
-
       if (success && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -616,11 +613,8 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
             behavior: SnackBarBehavior.floating,
           ),
         );
-
-        // Trigger animation for next slider
         _animationController.reset();
         _animationController.forward();
-
         setState(() {});
       } else if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -634,7 +628,6 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
   }
 
   Future<void> _markDelivered(BuildContext context) async {
-    // Show confirmation dialog
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -656,7 +649,6 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
 
     if (confirmed == true) {
       final success = await widget.controller.markDelivered();
-
       if (success && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -671,10 +663,7 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
             behavior: SnackBarBehavior.floating,
           ),
         );
-
         setState(() {});
-
-        // Navigate back after 2 seconds
         Future.delayed(const Duration(seconds: 2), () {
           if (context.mounted) {
             Navigator.pop(context);
@@ -698,19 +687,32 @@ class _PickupScreenState extends State<PickupScreen> with SingleTickerProviderSt
     }
   }
 
-  Future<void> _openMaps(double? lat, double? lng) async {
-    if (lat == null || lng == null) return;
-
-    final Uri googleMapsUri = Uri.parse('google.navigation:q=$lat,$lng');
-    if (await canLaunchUrl(googleMapsUri)) {
-      await launchUrl(googleMapsUri);
+  // ✅ UPDATED: Replace _openMaps with _openOSMNavigation
+  void _openOSMNavigation(
+      BuildContext context,
+      double? lat,
+      double? lng,
+      String destinationName,
+      ) {
+    if (lat == null || lng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Location not available'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
-    final Uri webUri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
-    if (await canLaunchUrl(webUri)) {
-      await launchUrl(webUri);
-    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OSMNavigationScreen(
+          destinationLat: lat,
+          destinationLng: lng,
+          destinationName: destinationName,
+        ),
+      ),
+    );
   }
 }

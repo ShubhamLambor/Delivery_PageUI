@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../map/osm_navigation_screen.dart';
 import '../order_tracking_controller.dart';
 
 class NavigationScreen extends StatelessWidget {
@@ -51,7 +52,6 @@ class NavigationScreen extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(height: 24),
 
           // Customer Details
@@ -112,9 +112,12 @@ class NavigationScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () => _openMaps(
+                        // ✅ UPDATED: Open OSM Navigation
+                        onPressed: () => _openOSMNavigation(
+                          context,
                           controller.deliveryLat,
                           controller.deliveryLng,
+                          controller.customerName,
                         ),
                         icon: const Icon(Icons.navigation, size: 18),
                         label: const Text('Navigate'),
@@ -130,7 +133,6 @@ class NavigationScreen extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(height: 24),
 
           // Mark Delivered Button
@@ -209,23 +211,34 @@ class NavigationScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _openMaps(double? lat, double? lng) async {
-    if (lat == null || lng == null) return;
-
-    // Try Google Maps app first
-    final Uri googleMapsUri = Uri.parse('google.navigation:q=$lat,$lng');
-    if (await canLaunchUrl(googleMapsUri)) {
-      await launchUrl(googleMapsUri);
+  // ✅ UPDATED: Replace _openMaps with _openOSMNavigation
+  void _openOSMNavigation(
+      BuildContext context,
+      double? lat,
+      double? lng,
+      String destinationName,
+      ) {
+    if (lat == null || lng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('❌ Location not available'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
-    // Fallback to web Google Maps
-    final Uri webUri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$lat,$lng');
-    if (await canLaunchUrl(webUri)) {
-      await launchUrl(webUri);
-    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OSMNavigationScreen(
+          destinationLat: lat,
+          destinationLng: lng,
+          destinationName: destinationName,
+        ),
+      ),
+    );
   }
-
 
   Future<void> _markDelivered(BuildContext context) async {
     final confirmed = await showDialog<bool>(

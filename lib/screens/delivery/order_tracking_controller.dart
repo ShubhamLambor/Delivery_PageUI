@@ -1,4 +1,5 @@
 // lib/screens/delivery/order_tracking_controller.dart
+
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -18,7 +19,7 @@ class OrderTrackingController extends ChangeNotifier {
 
   // State
   bool isLoading = false;
-  String orderStatus = 'accepted'; // accepted, ready, at_pickup_location, out_for_delivery, delivered
+  String orderStatus = 'accepted'; // Default fallback
 
   // Order Details
   String customerName = '';
@@ -74,8 +75,15 @@ class OrderTrackingController extends ChangeNotifier {
         if (data['success'] == true) {
           final order = data['order'];
 
-          // Populate order details
-          orderStatus = order['status'] ?? 'accepted';
+          // ✅ Handle empty or null status - default to 'accepted'
+          final rawStatus = order['status'];
+          if (rawStatus == null || rawStatus.toString().trim().isEmpty) {
+            orderStatus = 'accepted';
+            debugPrint('⚠️ Order status was empty, defaulting to "accepted"');
+          } else {
+            orderStatus = rawStatus.toString();
+          }
+
           customerName = order['customer_name'] ?? '';
           customerPhone = order['customer_phone'] ?? '';
           deliveryAddress = order['delivery_address'] ?? '';
@@ -151,18 +159,19 @@ class OrderTrackingController extends ChangeNotifier {
       );
 
       if (result['success'] == true) {
-        // ✅ UPDATE STATUS BASED ON BACKEND RESPONSE
-        // Backend may return 'ready' if order is already ready
-        // or 'at_pickup_location' if order not ready yet
-
-        // Reload order details to get updated status
-        await loadOrderDetails(orderId);
+        // ✅ Update status from backend response or use fallback
+        if (result['status'] != null && result['status'].toString().isNotEmpty) {
+          orderStatus = result['status'].toString();
+        } else {
+          // Fallback to 'reached_pickup' if backend doesn't return status
+          orderStatus = 'reached_pickup';
+        }
 
         reachedPickupAt = DateTime.now();
         notifyListeners();
 
         debugPrint('✅ Marked as reached pickup successfully');
-        debugPrint('   New status: $orderStatus');
+        debugPrint('📊 New status: $orderStatus');
         return true;
       } else {
         debugPrint('❌ Failed to mark reached pickup: ${result['message']}');
@@ -179,18 +188,24 @@ class OrderTrackingController extends ChangeNotifier {
     try {
       debugPrint('📦 Marking order $orderId as picked up...');
 
-      // Use DeliveryService which calls order_delivery_status.php
       final result = await DeliveryService.markPickedUp(
         orderId: orderId,
         deliveryPartnerId: deliveryPartnerId,
       );
 
       if (result['success'] == true) {
-        orderStatus = 'out_for_delivery'; // Backend sets this status
+        // ✅ Update status from backend response
+        if (result['status'] != null && result['status'].toString().isNotEmpty) {
+          orderStatus = result['status'].toString();
+        } else {
+          orderStatus = 'out_for_delivery'; // Default fallback
+        }
+
         pickedUpAt = DateTime.now();
         notifyListeners();
 
         debugPrint('✅ Order marked as picked up successfully');
+        debugPrint('📊 New status: $orderStatus');
         return true;
       } else {
         debugPrint('❌ Failed to mark as picked up: ${result['message']}');
@@ -215,7 +230,6 @@ class OrderTrackingController extends ChangeNotifier {
       if (result['success'] == true) {
         orderStatus = 'in_transit';
         notifyListeners();
-
         debugPrint('✅ Order marked as in transit successfully');
         return true;
       } else {
@@ -233,7 +247,6 @@ class OrderTrackingController extends ChangeNotifier {
     try {
       debugPrint('🎉 Marking order $orderId as delivered...');
 
-      // Use DeliveryService which calls order_delivery_status.php
       final result = await DeliveryService.markDelivered(
         orderId: orderId,
         deliveryPartnerId: deliveryPartnerId,
@@ -244,7 +257,6 @@ class OrderTrackingController extends ChangeNotifier {
         orderStatus = 'delivered';
         deliveredAt = DateTime.now();
         notifyListeners();
-
         debugPrint('✅ Order marked as delivered successfully');
         return true;
       } else {
@@ -259,16 +271,13 @@ class OrderTrackingController extends ChangeNotifier {
 
   /// Get estimated delivery time based on distance
   String get estimatedDeliveryTime {
-    // Calculate based on distance or return default
     // TODO: Implement actual calculation based on pickup/delivery locations
     return '25-30 mins';
   }
 
   /// Get total distance between pickup and delivery points
   String get totalDistance {
-    // Calculate distance between pickup and delivery
     // TODO: Implement haversine formula or use Google Distance Matrix API
-    // For now, return dummy value
     return '5.2 km';
   }
 
@@ -289,7 +298,7 @@ class OrderTrackingController extends ChangeNotifier {
     double? delivLat,
     double? delivLng,
   }) {
-    orderStatus = status;
+    orderStatus = status.isEmpty ? 'accepted' : status; // Handle empty status
     customerName = custName;
     customerPhone = custPhone;
     deliveryAddress = delivAddress;
@@ -308,7 +317,9 @@ class OrderTrackingController extends ChangeNotifier {
 
   /// Check if order can be marked as reached pickup
   bool canMarkReachedPickup() {
-    return orderStatus == 'accepted' || orderStatus == 'confirmed';
+    return orderStatus == 'accepted' ||
+        orderStatus == 'confirmed' ||
+        orderStatus.isEmpty;
   }
 
   /// Check if order can be marked as picked up
@@ -320,7 +331,8 @@ class OrderTrackingController extends ChangeNotifier {
 
   /// Check if order can be marked as in transit
   bool canMarkInTransit() {
-    return orderStatus == 'out_for_delivery' || orderStatus == 'picked_up';
+    return orderStatus == 'out_for_delivery' ||
+        orderStatus == 'picked_up';
   }
 
   /// Check if order can be marked as delivered

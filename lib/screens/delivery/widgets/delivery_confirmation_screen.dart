@@ -4,11 +4,13 @@ import '../order_tracking_controller.dart';
 class DeliveryConfirmationScreen extends StatelessWidget {
   final OrderTrackingController controller;
 
-  const DeliveryConfirmationScreen({Key? key, required this.controller}) : super(key: key);
+  const DeliveryConfirmationScreen({Key? key, required this.controller})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    // ✅ CRITICAL FIX: Wrap Column in SingleChildScrollView to prevent overflow
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -27,7 +29,6 @@ class DeliveryConfirmationScreen extends StatelessWidget {
               size: 120,
             ),
           ),
-
           const SizedBox(height: 32),
 
           const Text(
@@ -38,18 +39,22 @@ class DeliveryConfirmationScreen extends StatelessWidget {
               color: Colors.green,
             ),
           ),
-
           const SizedBox(height: 12),
 
-          Text(
-            'Order delivered successfully to ${controller.customerName}',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
+          // ✅ FIXED: Wrapped text with proper constraints
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Order delivered successfully to ${controller.customerName}',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+              maxLines: 2, // ✅ Limit lines
+              overflow: TextOverflow.ellipsis, // ✅ Handle overflow
             ),
           ),
-
           const SizedBox(height: 32),
 
           // Earnings Card
@@ -91,20 +96,20 @@ class DeliveryConfirmationScreen extends StatelessWidget {
               ],
             ),
           ),
-
           const SizedBox(height: 24),
 
           // Stats
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildStat('Distance', '${controller.totalDistance} km'),
+              _buildStat('Distance', '${controller.totalDistance}'),
               _buildStat('Time', '25 mins'),
               _buildStat('Rating', '⭐ 5.0'),
             ],
           ),
 
-          const Spacer(),
+          // ✅ FIXED: Add spacing instead of Spacer (Spacer doesn't work in ScrollView)
+          const SizedBox(height: 40),
 
           // Done Button
           SizedBox(
@@ -127,30 +132,40 @@ class DeliveryConfirmationScreen extends StatelessWidget {
               ),
             ),
           ),
+
+          // ✅ Added bottom padding for safe area
+          const SizedBox(height: 24),
         ],
       ),
     );
   }
 
   Widget _buildStat(String label, String value) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+    return Flexible( // ✅ Changed from implicit sizing to Flexible
+      child: Column(
+        mainAxisSize: MainAxisSize.min, // ✅ Added
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: 1, // ✅ Prevent overflow
+            overflow: TextOverflow.ellipsis, // ✅ Handle overflow
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey[600],
+            ),
+            maxLines: 1, // ✅ Prevent overflow
+            overflow: TextOverflow.ellipsis, // ✅ Handle overflow
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

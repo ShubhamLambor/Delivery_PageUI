@@ -22,7 +22,7 @@ class OrderTrackingScreen extends StatelessWidget {
       create: (_) => OrderTrackingController(
         orderId: orderId,
         deliveryPartnerId: deliveryPartnerId,
-      )..loadOrderDetails(orderId),  // ✅ Call loadOrderDetails here
+      )..loadOrderDetails(orderId),
       child: Consumer<OrderTrackingController>(
         builder: (context, controller, _) {
           if (controller.isLoading) {
@@ -39,7 +39,6 @@ class OrderTrackingScreen extends StatelessWidget {
                   OrderStatusStepper(
                     currentStatus: controller.orderStatus,
                   ),
-
                   // Main Content based on status
                   Expanded(
                     child: _buildContentForStatus(controller),
@@ -54,19 +53,28 @@ class OrderTrackingScreen extends StatelessWidget {
   }
 
   Widget _buildContentForStatus(OrderTrackingController controller) {
-    switch (controller.orderStatus.toLowerCase()) {
+    final status = controller.orderStatus.toLowerCase().trim();
+
+    switch (status) {
       case 'accepted':
-      case 'confirmed':  // ✅ ADDED: Handle confirmed status
-      case 'waiting_for_order':  // ✅ ADDED
-      case 'waiting_for_pickup':  // ✅ ADDED
+      case 'confirmed':
+      case 'waiting_for_order':
+      case 'waiting_for_pickup':
       case 'ready':
       case 'ready_for_pickup':
       case 'at_pickup_location':
+      case 'atpickuplocation':
+      case 'reached_pickup':        // ✅ ADDED
+      case 'reachedpickup':          // ✅ ADDED
+      case '':                       // ✅ Handle empty status
         return PickupScreen(controller: controller);
 
       case 'picked_up':
+      case 'pickedup':
       case 'out_for_delivery':
+      case 'outfordelivery':
       case 'in_transit':
+      case 'intransit':
         return NavigationScreen(controller: controller);
 
       case 'delivered':
@@ -80,7 +88,7 @@ class OrderTrackingScreen extends StatelessWidget {
               const Icon(Icons.info_outline, size: 80, color: Colors.grey),
               const SizedBox(height: 16),
               Text(
-                'Unknown status: ${controller.orderStatus}',
+                'Unknown status: "$status"',  // ✅ Show exact status
                 style: const TextStyle(fontSize: 16, color: Colors.grey),
               ),
             ],
