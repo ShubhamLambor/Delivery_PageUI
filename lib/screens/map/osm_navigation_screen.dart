@@ -1,5 +1,4 @@
 // lib/screens/map/osm_navigation_screen.dart
-
 import 'package:flutter/material.dart';
 import 'package:flutter_osm_plugin/flutter_osm_plugin.dart';
 import 'package:geolocator/geolocator.dart';
@@ -40,6 +39,9 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
   Timer? _routeUpdateTimer;
   GeoPoint? lastRouteUpdateLocation;
 
+  bool _markersAdded = false;
+  double? remainingDistance;
+
   // Clean modern color palette
   static const Color primaryBlue = Color(0xFF2563EB);
   static const Color accentGreen = Color(0xFF10B981);
@@ -67,20 +69,48 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
 
   Future<void> _initializeController() async {
     try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Location permissions denied');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Location permissions permanently denied');
+      }
+
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
       );
+
       currentLocation = GeoPoint(
         latitude: position.latitude,
         longitude: position.longitude,
       );
       currentHeading = position.heading;
+
+      _updateRemainingDistance(currentLocation!);
+
     } catch (e) {
-      debugPrint('Error getting location: $e');
+      debugPrint('❌ Error getting location: $e');
+
       currentLocation = GeoPoint(
         latitude: widget.destinationLat,
         longitude: widget.destinationLng,
       );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Location error: ${e.toString()}'),
+            backgroundColor: Colors.orange.shade600,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
 
     mapController = MapController(
@@ -121,6 +151,8 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
         longitude: position.longitude,
       );
 
+      _updateRemainingDistance(newLocation);
+
       if (mounted) setState(() => currentLocation = newLocation);
 
       await _updateCurrentLocationMarker(newLocation);
@@ -129,7 +161,21 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
         await _updateRoute(newLocation);
         lastRouteUpdateLocation = newLocation;
       }
+
+      if (remainingDistance != null && remainingDistance! < 0.02) {
+        _showArrivalDialog();
+      }
     });
+  }
+
+  void _updateRemainingDistance(GeoPoint current) {
+    final distance = Geolocator.distanceBetween(
+      current.latitude,
+      current.longitude,
+      widget.destinationLat,
+      widget.destinationLng,
+    );
+    remainingDistance = distance / 1000;
   }
 
   bool _shouldUpdateRoute(GeoPoint newLocation) {
@@ -150,7 +196,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
         await mapController!.changeLocation(newLocation);
       }
     } catch (e) {
-      debugPrint('Error updating marker: $e');
+      debugPrint('❌ Error updating marker: $e');
     }
   }
 
@@ -180,7 +226,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
 
       if (mounted) setState(() {});
     } catch (e) {
-      debugPrint('Error updating route: $e');
+      debugPrint('❌ Error updating route: $e');
     }
   }
 
@@ -195,26 +241,27 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
         longitude: widget.destinationLng,
       );
 
-      // Rider marker (bike icon style)
-      await mapController!.addMarker(
-        currentLocation!,
-        markerIcon: MarkerIcon(
-          iconWidget: _buildRiderMarker(
-            size: 80,
-            rotation: currentHeading,
+      if (!_markersAdded) {
+        await mapController!.addMarker(
+          currentLocation!,
+          markerIcon: MarkerIcon(
+            iconWidget: _buildRiderMarker(
+              size: 80,
+              rotation: currentHeading,
+            ),
           ),
-        ),
-      );
+        );
 
-      // Destination marker (minimal pin)
-      await mapController!.addMarker(
-        destination,
-        markerIcon: MarkerIcon(
-          iconWidget: _buildDestinationMarker(size: 60),
-        ),
-      );
+        await mapController!.addMarker(
+          destination,
+          markerIcon: MarkerIcon(
+            iconWidget: _buildDestinationMarker(size: 60),
+          ),
+        );
 
-      // Draw route with white border
+        _markersAdded = true;
+      }
+
       roadInfo = await mapController!.drawRoad(
         currentLocation!,
         destination,
@@ -229,16 +276,22 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
       );
 
       lastRouteUpdateLocation = currentLocation;
+
     } catch (e) {
-      debugPrint('Error drawing route: $e');
+      debugPrint('❌ Error drawing route: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Text('Failed to calculate route'),
+            content: const Text('Failed to calculate route. Please check your internet connection.'),
             backgroundColor: Colors.red.shade600,
             behavior: SnackBarBehavior.floating,
             margin: const EdgeInsets.all(16),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _drawRoute,
+            ),
           ),
         );
       }
@@ -247,12 +300,52 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     }
   }
 
-  // 🚴 Rider Marker (Delivery Partner Location)
+  void _showArrivalDialog() {
+    if (!mounted) return;
+
+    setState(() => isTrackingEnabled = false);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.celebration, color: accentGreen, size: 28),
+            SizedBox(width: 12),
+            Text('Arrived!'),
+          ],
+        ),
+        content: Text('You have arrived at ${widget.destinationName}'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.pop(context);
+            },
+            child: const Text('Done'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              setState(() => isTrackingEnabled = true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: accentGreen,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRiderMarker({required double size, double rotation = 0}) {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Pulsing outer ring
         AnimatedBuilder(
           animation: _pulseController,
           builder: (context, child) {
@@ -266,7 +359,6 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
             );
           },
         ),
-        // Main circle
         Container(
           width: size,
           height: size,
@@ -283,7 +375,6 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
             ],
           ),
         ),
-        // Navigation arrow
         Transform.rotate(
           angle: rotation * (math.pi / 180),
           child: Icon(
@@ -296,7 +387,6 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     );
   }
 
-  // 📍 Destination Marker (Clean Pin)
   Widget _buildDestinationMarker({required double size}) {
     return Container(
       width: size,
@@ -360,7 +450,6 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
           ? _buildLoadingScreen()
           : Stack(
         children: [
-          // Full-screen map
           OSMFlutter(
             controller: mapController!,
             onMapIsReady: (isReady) {
@@ -380,27 +469,23 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
               showDefaultInfoWindow: false,
             ),
           ),
-          // Top floating header
           _buildTopHeader(),
-          // Right-side floating controls
           _buildFloatingControls(),
-          // Bottom CTA button
           _buildBottomCTA(),
-          // Loading overlay
           if (isLoadingRoute) _buildLoadingOverlay(),
         ],
       ),
     );
   }
 
-  // 📱 Top Floating Header (Compact Info Card)
+  // ✅ FIXED: Top Floating Header (No Overflow)
   Widget _buildTopHeader() {
     return Positioned(
       top: 50,
       left: 16,
       right: 16,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // ✅ Reduced padding
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -428,15 +513,16 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
               ),
             ),
             const SizedBox(width: 12),
-            // Destination info
+            // Destination info - ✅ WRAPPED IN EXPANDED
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min, // ✅ Added
                 children: [
                   Text(
                     widget.destinationName,
                     style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 14, // ✅ Reduced from 15
                       fontWeight: FontWeight.w700,
                       color: darkGray,
                     ),
@@ -445,38 +531,50 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
                   ),
                   if (roadInfo != null) ...[
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.route, size: 14, color: lightGray),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${(roadInfo!.distance ?? 0).toStringAsFixed(1)} km',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: lightGray,
+                    // ✅ FIXED: Wrapped Row in Flexible to prevent overflow
+                    Flexible(
+                      child: Row(
+                        children: [
+                          Icon(Icons.route, size: 13, color: lightGray), // ✅ Reduced size
+                          const SizedBox(width: 3),
+                          Flexible( // ✅ Added Flexible
+                            child: Text(
+                              '${(roadInfo!.distance ?? 0).toStringAsFixed(1)} km',
+                              style: TextStyle(
+                                fontSize: 12, // ✅ Reduced from 13
+                                fontWeight: FontWeight.w600,
+                                color: lightGray,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Icon(Icons.access_time, size: 14, color: lightGray),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${((roadInfo!.duration ?? 0) / 60).toStringAsFixed(0)} min',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: lightGray,
+                          const SizedBox(width: 8), // ✅ Reduced from 12
+                          Icon(Icons.access_time, size: 13, color: lightGray), // ✅ Reduced size
+                          const SizedBox(width: 3),
+                          Flexible( // ✅ Added Flexible
+                            child: Text(
+                              '${((roadInfo!.duration ?? 0) / 60).toStringAsFixed(0)} min',
+                              style: TextStyle(
+                                fontSize: 12, // ✅ Reduced from 13
+                                fontWeight: FontWeight.w600,
+                                color: lightGray,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ],
               ),
             ),
+            const SizedBox(width: 8), // ✅ Added spacing
             // Status pill
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), // ✅ Reduced padding
               decoration: BoxDecoration(
                 color: accentGreen.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(20),
@@ -485,18 +583,18 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    width: 6,
-                    height: 6,
+                    width: 5, // ✅ Reduced from 6
+                    height: 5, // ✅ Reduced from 6
                     decoration: const BoxDecoration(
                       color: accentGreen,
                       shape: BoxShape.circle,
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 5), // ✅ Reduced from 6
                   Text(
-                    isTrackingEnabled ? 'On the way' : 'Paused',
+                    isTrackingEnabled ? 'Active' : 'Paused', // ✅ Shortened text
                     style: const TextStyle(
-                      fontSize: 11,
+                      fontSize: 10, // ✅ Reduced from 11
                       fontWeight: FontWeight.w600,
                       color: accentGreen,
                     ),
@@ -510,20 +608,17 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     );
   }
 
-  // 🎛️ Right-Side Floating Controls
   Widget _buildFloatingControls() {
     return Positioned(
       right: 16,
       top: 150,
       child: Column(
         children: [
-          // Re-center button
           _buildCircularButton(
             icon: Icons.my_location_rounded,
             onTap: _showMyLocation,
           ),
           const SizedBox(height: 12),
-          // Speed indicator
           if (currentSpeed > 1)
             Container(
               padding: const EdgeInsets.all(12),
@@ -592,7 +687,6 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     );
   }
 
-  // 🎯 Bottom CTA Button
   Widget _buildBottomCTA() {
     return Positioned(
       bottom: 30,
@@ -641,7 +735,6 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     );
   }
 
-  // Loading states
   Widget _buildLoadingScreen() {
     return Container(
       color: Colors.white,

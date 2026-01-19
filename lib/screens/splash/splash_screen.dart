@@ -1,134 +1,72 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:ui';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends StatefulWidget {
-  final bool isLoggedIn;
-
-  const SplashScreen({super.key, required this.isLoggedIn});
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
 class _SplashScreenState extends State<SplashScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _fadeController;
-  late AnimationController _scaleController;
-  late AnimationController _iconController;
-  late AnimationController _pulseController;
-  late AnimationController _progressController;
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
   late Animation<double> _fadeAnimation;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _pulseAnimation;
-
-  int _currentPage = 0;
-  late PageController _pageController;
-  Timer? _pageTimer;
-
-  final List<Map<String, dynamic>> _pages = [
-    {
-      'icon': Icons.delivery_dining,
-      'title': 'Tiffinity',
-      'subtitle': 'Delivery Partner Portal',
-      'description': 'Delivering fresh meals, on time',
-    },
-    {
-      'icon': Icons.directions_bike,
-      'title': 'Fast Delivery',
-      'subtitle': 'Quick & Reliable',
-      'description': 'Efficient route planning for faster deliveries',
-    },
-    {
-      'icon': Icons.attach_money,
-      'title': 'Earn More',
-      'subtitle': 'Flexible Earnings',
-      'description': 'Work on your schedule, maximize your income',
-    },
-  ];
+  late Animation<double> _slideAnimation;
+  late Animation<double> _rotateAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    _pageController = PageController();
-
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-
-    _scaleController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-
-    _iconController = AnimationController(
+    _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-
-    // Pulse animation for logo
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
-
-    // Progress animation
-    _progressController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 9), // Total splash duration
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeIn),
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.0, 0.5, curve: Curves.easeIn),
+      ),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _scaleController, curve: Curves.elasticOut),
+    _slideAnimation = Tween<double>(begin: 50.0, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.3, 0.8, curve: Curves.easeOutBack),
+      ),
     );
 
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    _rotateAnimation = Tween<double>(begin: -0.1, end: 0.0).animate(
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.3, 0.8, curve: Curves.easeOut),
+      ),
     );
 
-    _fadeController.forward();
-    _scaleController.forward();
-    _progressController.forward();
+    _controller.forward();
+    _navigateToNextScreen();
+  }
 
-    // Auto-advance pages
-    _pageTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (_currentPage < _pages.length - 1) {
-        _currentPage++;
-        _pageController.animateToPage(
-          _currentPage,
-          duration: const Duration(milliseconds: 400),
-          curve: Curves.easeInOut,
-        );
-      } else {
-        timer.cancel();
-        // Navigate based on login status
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pushReplacementNamed(
-              context,
-              widget.isLoggedIn ? '/home' : '/login',
-            );
-          }
-        });
-      }
-    });
+  Future<void> _navigateToNextScreen() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+
+    await Future.delayed(const Duration(milliseconds: 2000));
+
+    if (mounted) {
+      Navigator.pushReplacementNamed(
+        context,
+        isLoggedIn ? '/home' : '/login',
+      );
+    }
   }
 
   @override
   void dispose() {
-    _pageTimer?.cancel();
-    _fadeController.dispose();
-    _scaleController.dispose();
-    _iconController.dispose();
-    _pulseController.dispose();
-    _progressController.dispose();
-    _pageController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -137,308 +75,309 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
+          // ✅ Matches your app's green gradient
           gradient: LinearGradient(
             colors: [
-              Colors.green.shade50,
+              const Color(0xFF4CAF50), // Primary green from your app
+              const Color(0xFF66BB6A), // Lighter green
               Colors.white,
-              Colors.green.shade50,
             ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            stops: const [0.0, 0.4, 1.0],
           ),
         ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Background decorative icons
-              Expanded(
-                child: Stack(
+        child: Center(
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Animated Tiffin Box Stack
+                AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: Offset(0, _slideAnimation.value),
+                      child: Transform.rotate(
+                        angle: _rotateAnimation.value,
+                        child: _buildTiffinStack(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 32),
+
+                // App Title - white for contrast on green
+                const Text(
+                  'Tiffinity',
+                  style: TextStyle(
+                    fontSize: 38,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                    letterSpacing: 1.5,
+                    shadows: [
+                      Shadow(
+                        color: Colors.black26,
+                        offset: Offset(0, 2),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Delivery Partner Portal',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white.withOpacity(0.95),
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Top left box icon
-                    Positioned(
-                      top: 40,
-                      left: 40,
-                      child: AnimatedBuilder(
-                        animation: _iconController,
-                        builder: (context, child) {
-                          return Opacity(
-                            opacity: 0.08 + (0.04 * _iconController.value),
-                            child: Icon(
-                              Icons.inventory_2_outlined,
-                              size: 80,
-                              color: Colors.green.shade300,
-                            ),
-                          );
-                        },
-                      ),
+                    Icon(
+                      Icons.restaurant,
+                      size: 16,
+                      color: Colors.white.withOpacity(0.9),
                     ),
-                    // Top right location icon
-                    Positioned(
-                      top: 150,
-                      right: 60,
-                      child: AnimatedBuilder(
-                        animation: _iconController,
-                        builder: (context, child) {
-                          return Opacity(
-                            opacity: 0.12 - (0.04 * _iconController.value),
-                            child: Icon(
-                              Icons.location_on_outlined,
-                              size: 100,
-                              color: Colors.green.shade200,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    // Bottom left icons
-                    Positioned(
-                      bottom: 100,
-                      left: 30,
-                      child: AnimatedBuilder(
-                        animation: _iconController,
-                        builder: (context, child) {
-                          return Opacity(
-                            opacity: 0.08 + (0.03 * _iconController.value),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.pedal_bike_outlined,
-                                  size: 90,
-                                  color: Colors.green.shade200,
-                                ),
-                                const SizedBox(width: 20),
-                                Icon(
-                                  Icons.directions_bike_outlined,
-                                  size: 70,
-                                  color: Colors.green.shade300,
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                    // Bottom right delivery icon
-                    Positioned(
-                      bottom: 150,
-                      right: 40,
-                      child: AnimatedBuilder(
-                        animation: _iconController,
-                        builder: (context, child) {
-                          return Opacity(
-                            opacity: 0.10 - (0.03 * _iconController.value),
-                            child: Icon(
-                              Icons.fastfood_outlined,
-                              size: 85,
-                              color: Colors.green.shade300,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-
-                    // Center content
-                    Center(
-                      child: FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: ScaleTransition(
-                          scale: _scaleAnimation,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              // Glassmorphism container with pulse effect
-                              AnimatedBuilder(
-                                animation: _pulseAnimation,
-                                builder: (context, child) {
-                                  return Transform.scale(
-                                    scale: _pulseAnimation.value,
-                                    child: Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        // Outer glow pulse
-                                        Container(
-                                          width: 160,
-                                          height: 160,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.green.withOpacity(
-                                                  0.3 * (2 - _pulseAnimation.value),
-                                                ),
-                                                blurRadius: 40,
-                                                spreadRadius: 15,
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        // Glassmorphism container
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(80),
-                                          child: BackdropFilter(
-                                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                                            child: Container(
-                                              width: 140,
-                                              height: 140,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                gradient: LinearGradient(
-                                                  colors: [
-                                                    Colors.green.shade600.withOpacity(0.9),
-                                                    Colors.green.shade700.withOpacity(0.8),
-                                                  ],
-                                                  begin: Alignment.topLeft,
-                                                  end: Alignment.bottomRight,
-                                                ),
-                                                border: Border.all(
-                                                  color: Colors.white.withOpacity(0.2),
-                                                  width: 1.5,
-                                                ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.green.withOpacity(0.4),
-                                                    blurRadius: 30,
-                                                    spreadRadius: 5,
-                                                  ),
-                                                ],
-                                              ),
-                                              child: const Icon(
-                                                Icons.delivery_dining,
-                                                size: 70,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-
-                              const SizedBox(height: 35),
-
-                              // PageView for content
-                              SizedBox(
-                                height: 165,
-                                child: PageView.builder(
-                                  controller: _pageController,
-                                  onPageChanged: (index) {
-                                    setState(() {
-                                      _currentPage = index;
-                                    });
-                                  },
-                                  itemCount: _pages.length,
-                                  itemBuilder: (context, index) {
-                                    return Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          _pages[index]['title'],
-                                          style: TextStyle(
-                                            fontSize: 30,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.green.shade800,
-                                            letterSpacing: 1,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          _pages[index]['subtitle'],
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            color: Colors.green.shade600,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 16),
-                                        // Page indicator dots
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: List.generate(
-                                            _pages.length,
-                                                (dotIndex) => AnimatedContainer(
-                                              duration: const Duration(milliseconds: 300),
-                                              margin: const EdgeInsets.symmetric(horizontal: 4),
-                                              width: _currentPage == dotIndex ? 24 : 8,
-                                              height: 8,
-                                              decoration: BoxDecoration(
-                                                color: _currentPage == dotIndex
-                                                    ? Colors.green.shade600
-                                                    : Colors.green.shade200,
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 18),
-                                        Flexible(
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 40),
-                                            child: Text(
-                                              _pages[index]['description'],
-                                              textAlign: TextAlign.center,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                fontSize: 14,
-                                                color: Colors.grey.shade600,
-                                                height: 1.4,
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Fresh meals, delivered fast',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white.withOpacity(0.85),
+                        fontStyle: FontStyle.italic,
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 50),
+
+                // Loading indicator - white on green
+                const SizedBox(
+                  width: 35,
+                  height: 35,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3.5,
+                    valueColor: AlwaysStoppedAnimation(Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Custom Tiffin Stack Widget - Green & White theme
+  Widget _buildTiffinStack() {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Shadow
+        Positioned(
+          bottom: -10,
+          child: Container(
+            width: 140,
+            height: 20,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(70),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.25),
+                  blurRadius: 30,
+                  spreadRadius: 8,
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Tiffin Stack
+        SizedBox(
+          width: 140,
+          height: 160,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Handle on top - Metallic silver/white
+              Positioned(
+                top: 0,
+                child: _buildTiffinHandle(),
               ),
 
-              // Minimal progress indicator at bottom
-              Padding(
-                padding: const EdgeInsets.only(bottom: 30, left: 50, right: 50),
-                child: AnimatedBuilder(
-                  animation: _progressController,
-                  builder: (context, child) {
-                    return Column(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: LinearProgressIndicator(
-                            value: _progressController.value,
-                            backgroundColor: Colors.green.shade100,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.green.shade600,
-                            ),
-                            minHeight: 4,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Loading...',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.green.shade600,
-                            fontWeight: FontWeight.w500,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+              // Top Layer (Light Green)
+              Positioned(
+                top: 20,
+                child: _buildTiffinLayer(
+                  const Color(0xFF66BB6A), // Light green
+                  const Color(0xFF81C784), // Lighter green
+                  30,
+                  isTop: true,
+                ),
+              ),
+
+              // Middle Layer (Primary Green)
+              Positioned(
+                top: 50,
+                child: _buildTiffinLayer(
+                  const Color(0xFF4CAF50), // Primary green
+                  const Color(0xFF66BB6A), // Light green
+                  35,
+                ),
+              ),
+
+              // Bottom Layer (Dark Green)
+              Positioned(
+                top: 85,
+                child: _buildTiffinLayer(
+                  const Color(0xFF388E3C), // Dark green
+                  const Color(0xFF4CAF50), // Primary green
+                  40,
+                  isBottom: true,
+                ),
+              ),
+
+              // Delivery bike icon overlay - white badge
+              Positioned(
+                bottom: 10,
+                right: 10,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.25),
+                        blurRadius: 10,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.delivery_dining,
+                    size: 24,
+                    color: Color(0xFF4CAF50), // Primary green
+                  ),
                 ),
               ),
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  // Tiffin Handle - Metallic gray/white
+  Widget _buildTiffinHandle() {
+    return Container(
+      width: 50,
+      height: 25,
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: Colors.grey.shade300,
+          width: 3.5,
+        ),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(25),
+        ),
+        color: Colors.white.withOpacity(0.9),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Individual Tiffin Layer - Green shades
+  Widget _buildTiffinLayer(
+      Color topColor,
+      Color bottomColor,
+      double height, {
+        bool isTop = false,
+        bool isBottom = false,
+      }) {
+    return Container(
+      width: 100,
+      height: height,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [topColor, bottomColor],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.vertical(
+          top: isTop ? const Radius.circular(8) : Radius.zero,
+          bottom: isBottom ? const Radius.circular(12) : Radius.zero,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(
+          color: Colors.white.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Metallic shine effect - white highlight
+          Positioned(
+            left: 10,
+            top: height * 0.25,
+            child: Container(
+              width: 3,
+              height: height * 0.5,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          // Horizontal lines for texture
+          if (!isTop)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 2,
+                color: Colors.black.withOpacity(0.2),
+              ),
+            ),
+          // Bottom edge highlight for depth
+          if (!isBottom)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.white.withOpacity(0.0),
+                      Colors.white.withOpacity(0.2),
+                      Colors.white.withOpacity(0.0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
