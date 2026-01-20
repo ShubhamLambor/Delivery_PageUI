@@ -132,9 +132,8 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// ✅ NEW: Pull-to-refresh functionality
-  Future<void> _handleRefresh() async {
+  Future _handleRefresh() async {
     if (!mounted) return;
-
     debugPrint('🔄 Manual refresh triggered...');
 
     final home = context.read<HomeController>();
@@ -166,7 +165,6 @@ class _HomePageState extends State<HomePage> {
       debugPrint('✅ Manual refresh completed');
     } catch (e) {
       debugPrint('❌ Error during manual refresh: $e');
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -184,6 +182,7 @@ class _HomePageState extends State<HomePage> {
       }
     }
   }
+
 
   /// Show new order dialog with Accept/Reject options
   void showNewOrderDialog(Map<String, dynamic> assignment) {
@@ -922,16 +921,25 @@ class _HomePageState extends State<HomePage> {
     final auth = context.watch<AuthController>();
     final deliveriesController = context.watch<DeliveriesController>();
 
+    // Fallback to DeliveriesController counts if Home stats are zero
+    final completed = home.completedCount == 0
+        ? deliveriesController.completedCount
+        : home.completedCount;
+
+    final pending = home.pendingCount == 0
+        ? deliveriesController.pendingCount
+        : home.pendingCount;
+
+    final cancelled = home.cancelledCount == 0
+        ? deliveriesController.cancelledCount
+        : home.cancelledCount;
+
     final DeliveryModel? current = home.currentDelivery;
     final List<DeliveryModel> upcoming = home.upcomingDeliveries;
     final List<DeliveryModel> newOrders = deliveriesController.newOrders;
 
-    final completed = home.completedCount;
-    final pending = home.pendingCount;
-    final cancelled = home.cancelledCount;
-    final isOnline = home.isOnline;
-
-    final userName = auth.user?.name ?? 'Delivery Partner';
+    final bool isOnline = home.isOnline;
+    final String userName = auth.user?.name ?? 'Delivery Partner';
     final now = DateTime.now();
     final dateStr = DateFormat('EEE, d MMM').format(now);
 
@@ -1056,6 +1064,7 @@ class _HomePageState extends State<HomePage> {
 
 
               // ===== STATS GRID =====
+              // STATS GRID
               Transform.translate(
                 offset: const Offset(0, -60),
                 child: Padding(
@@ -1070,7 +1079,7 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       _buildStatCard(
                         'Today\'s Earnings',
-                        '₹${home.todayEarnings}',
+                        home.todayEarnings.toString(),
                         Icons.currency_rupee,
                         Colors.orange,
                       ),
@@ -1096,6 +1105,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
+
 
               // ===== MAIN CONTENT =====
               Transform.translate(

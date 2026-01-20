@@ -167,7 +167,7 @@ class DeliveriesController extends ChangeNotifier {
   }
 
   /// ✅ Fetch/refresh all deliveries from backend
-  Future<void> fetchDeliveries() async {
+  Future fetchDeliveries() async {
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
@@ -183,11 +183,15 @@ class DeliveriesController extends ChangeNotifier {
       }
 
       debugPrint('🔄 Fetching deliveries for partner: $deliveryPartnerId');
+
+      // Clear current cache
       _repo.clearDeliveries();
 
+      // ✅ Load all types of orders
       await fetchNewOrders();
       await fetchActiveOrders();
-      // await fetchOrderHistory();
+      await fetchOrderHistory();        // ✅ IMPORTANT: re‑enable this
+      // or: await fetchOrderHistory(limit: 50);
 
       _isLoading = false;
       _errorMessage = null;
@@ -201,6 +205,7 @@ class DeliveriesController extends ChangeNotifier {
       debugPrint('❌ Error fetching deliveries: $e');
     }
   }
+
 
   /// ✅ Fetch active/ongoing orders
   Future<void> fetchActiveOrders() async {

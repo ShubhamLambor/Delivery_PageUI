@@ -2,10 +2,45 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../auth/auth_controller.dart';
 import 'earnings_controller.dart';
 
-class EarningsPage extends StatelessWidget {
+class EarningsPage extends StatefulWidget {
   const EarningsPage({super.key});
+
+  @override
+  State<EarningsPage> createState() => _EarningsPageState();
+}
+
+class _EarningsPageState extends State<EarningsPage> {
+  String _period = 'today'; // today | week | month | all
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthController>();
+      final partnerId = auth.getCurrentUserId() ?? '';
+      if (partnerId.isNotEmpty) {
+        context
+            .read<EarningsController>()
+            .fetchEarnings(partnerId, period: _period);
+      }
+    });
+  }
+
+  void _changePeriod(String period) {
+    if (_period == period) return;
+    setState(() => _period = period);
+
+    final auth = context.read<AuthController>();
+    final partnerId = auth.getCurrentUserId() ?? '';
+    if (partnerId.isNotEmpty) {
+      context
+          .read<EarningsController>()
+          .fetchEarnings(partnerId, period: period);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -17,10 +52,10 @@ class EarningsPage extends StatelessWidget {
         body: SafeArea(
           child: Column(
             children: [
-              // Green Header
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     colors: [Color(0xFF43A047), Color(0xFF66BB6A)],
@@ -56,7 +91,7 @@ class EarningsPage extends StatelessWidget {
       backgroundColor: const Color(0xFFF8F9FA),
       body: CustomScrollView(
         slivers: [
-          // Green Header Section (matching Profile page style)
+          // Header + Today card + period filters
           SliverToBoxAdapter(
             child: Container(
               decoration: const BoxDecoration(
@@ -74,7 +109,6 @@ class EarningsPage extends StatelessWidget {
                 bottom: false,
                 child: Column(
                   children: [
-                    // Top Bar with Title
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 20,
@@ -93,7 +127,7 @@ class EarningsPage extends StatelessWidget {
                           ),
                           IconButton(
                             onPressed: () {
-                              // Filter or settings action
+                              // could open a filter bottom sheet later
                             },
                             icon: const Icon(
                               Icons.filter_list,
@@ -105,9 +139,9 @@ class EarningsPage extends StatelessWidget {
                       ),
                     ),
 
-                    // Today's Earnings Card (White card inside green section)
+                    // Today's Earnings Card
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                       child: Container(
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(
@@ -127,11 +161,11 @@ class EarningsPage extends StatelessWidget {
                         ),
                         child: Column(
                           children: [
-                            // Icon
                             Container(
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF43A047).withOpacity(0.1),
+                                color:
+                                const Color(0xFF43A047).withOpacity(0.1),
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(
@@ -141,8 +175,6 @@ class EarningsPage extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 16),
-
-                            // Label
                             Text(
                               "Today's Earnings",
                               style: TextStyle(
@@ -153,27 +185,23 @@ class EarningsPage extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 8),
-
-                            // Amount
                             Text(
-                              "₹ ${controller.todayEarnings.toStringAsFixed(0)}",
+                              "₹ ${controller.totalEarnings.toStringAsFixed(0)}",
                               style: const TextStyle(
                                 color: Colors.black87,
                                 fontSize: 40,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-
                             const SizedBox(height: 20),
-
-                            // Status Badge
                             Container(
                               padding: const EdgeInsets.symmetric(
                                 vertical: 10,
                                 horizontal: 16,
                               ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF43A047).withOpacity(0.1),
+                                color:
+                                const Color(0xFF43A047).withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Row(
@@ -208,13 +236,30 @@ class EarningsPage extends StatelessWidget {
                         ),
                       ),
                     ),
+
+                    // Period filter buttons
+                    Padding(
+                      padding:
+                      const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Row(
+                        children: [
+                          _periodChip('today', 'Today'),
+                          const SizedBox(width: 8),
+                          _periodChip('week', 'This Week'),
+                          const SizedBox(width: 8),
+                          _periodChip('month', 'This Month'),
+                          const SizedBox(width: 8),
+                          _periodChip('all', 'All Time'),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
           ),
 
-          // Recent Activity Section
+          // Recent Activity title
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
@@ -237,43 +282,169 @@ class EarningsPage extends StatelessWidget {
                       color: Colors.black87,
                     ),
                   ),
-                ],
-              ),
-            ),
-          ),
-
-          // Empty State
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.history,
-                    size: 64,
-                    color: Colors.grey[300],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    "No recent transactions today",
-                    style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 15,
+                  const Spacer(),
+                  if (controller.totalDeliveries > 0)
+                    Text(
+                      '${controller.totalDeliveries} orders',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontSize: 13,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
           ),
 
-          // Extra Bottom Padding
+          // Recent list or empty state
+          if (controller.recent.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.history,
+                      size: 64,
+                      color: Colors.grey[300],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "No recent transactions",
+                      style: TextStyle(
+                        color: Colors.grey[500],
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                  final item = controller.recent[index];
+                  final amount =
+                  (item['total_amount'] ?? item['amount'] ?? 0).toString();
+                  final title = 'Order #${item['id'] ?? ''}';
+                  final customer =
+                  (item['customer_name'] ?? 'Customer').toString();
+                  final address =
+                  (item['delivery_address'] ?? '').toString();
+                  final time =
+                  (item['completed_at'] ?? item['time'] ?? '').toString();
+
+                  return Padding(
+                    padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.03),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: ListTile(
+                        title: Text(
+                          title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const SizedBox(height: 4),
+                            Text(
+                              customer,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              address,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Icon(Icons.access_time,
+                                    size: 14, color: Colors.grey[500]),
+                                const SizedBox(width: 4),
+                                Text(
+                                  time,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        trailing: Text(
+                          '₹$amount',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+                childCount: controller.recent.length,
+              ),
+            ),
+
           SliverPadding(
             padding: EdgeInsets.only(
               bottom: MediaQuery.of(context).padding.bottom + 80,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _periodChip(String value, String label) {
+    final bool selected = _period == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _changePeriod(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? Colors.white : Colors.white70,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? const Color(0xFF43A047) : Colors.white,
+                fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -6,7 +6,10 @@ import '../order_tracking_controller.dart';
 class NavigationScreen extends StatelessWidget {
   final OrderTrackingController controller;
 
-  const NavigationScreen({Key? key, required this.controller}) : super(key: key);
+  const NavigationScreen({
+    Key? key,
+    required this.controller,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -40,17 +43,17 @@ class NavigationScreen extends StatelessWidget {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _buildMetric('${controller.totalDistance} km', 'Distance'),
-                    Container(width: 1, height: 30, color: Colors.white30),
-                    _buildMetric(controller.estimatedDeliveryTime, 'ETA'),
-                  ],
-                ),
               ],
             ),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildMetric(controller.totalDistance, 'km', 'Distance'),
+              Container(width: 1, height: 30, color: Colors.grey.shade300),
+              _buildMetric(controller.estimatedDeliveryTime, '', 'ETA'),
+            ],
           ),
           const SizedBox(height: 24),
 
@@ -83,10 +86,7 @@ class NavigationScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     const Text(
                       'Delivery Location',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -112,7 +112,7 @@ class NavigationScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(
-                        // ✅ UPDATED: Open OSM Navigation
+                        // ✅ FIXED: Check for null before navigating
                         onPressed: () => _openOSMNavigation(
                           context,
                           controller.deliveryLat,
@@ -166,24 +166,36 @@ class NavigationScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMetric(String value, String label) {
+  Widget _buildMetric(String value, String unit, String label) {
     return Column(
       children: [
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E88E5),
+              ),
+            ),
+            if (unit.isNotEmpty)
+              Text(
+                ' $unit',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 4),
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 12,
-          ),
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
         ),
       ],
     );
@@ -194,7 +206,7 @@ class NavigationScreen extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: Colors.grey[600]),
+          Icon(icon, size: 18, color: Colors.grey.shade600),
           const SizedBox(width: 12),
           Expanded(
             child: Text(text, style: const TextStyle(fontSize: 14)),
@@ -211,23 +223,26 @@ class NavigationScreen extends StatelessWidget {
     }
   }
 
-  // ✅ UPDATED: Replace _openMaps with _openOSMNavigation
+  // ✅ FIXED: Proper null checking before navigation
   void _openOSMNavigation(
       BuildContext context,
       double? lat,
       double? lng,
       String destinationName,
       ) {
-    if (lat == null || lng == null) {
+    // Check if coordinates are null or invalid
+    if (lat == null || lng == null || lat == 0.0 || lng == 0.0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('❌ Location not available'),
+          content: Text('Location not available. Please try again.'),
           backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
         ),
       );
       return;
     }
 
+    // Navigate to OSM navigation screen
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -262,10 +277,11 @@ class NavigationScreen extends StatelessWidget {
 
     if (confirmed == true) {
       final success = await controller.markDelivered();
+
       if (success && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Order delivered successfully!'),
+            content: Text('Order delivered successfully!'),
             backgroundColor: Colors.green,
           ),
         );

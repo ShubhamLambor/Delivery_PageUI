@@ -22,14 +22,45 @@ class CurrentDeliveryCard extends StatelessWidget {
     this.onCancel,
   });
 
+  // ✅ FIXED: Proper null checking before navigation
   Future<void> _handleNavigation(BuildContext context) async {
+    // Extract coordinates with null safety
+    final double? lat = delivery.latitude;
+    final double? lng = delivery.longitude;
+    final String name = delivery.customerName;
+
+    // ✅ Validate coordinates before navigating
+    if (lat == null || lng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location coordinates not available. Please contact support.'),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // ✅ Check if coordinates are valid (not zero)
+    if (lat == 0.0 || lng == 0.0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid delivery location. Please update the order details.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // ✅ Navigate with validated coordinates
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => OSMNavigationScreen(
-          destinationLat: delivery.latitude!,
-          destinationLng: delivery.longitude!,
-          destinationName: delivery.customerName,
+          destinationLat: lat,
+          destinationLng: lng,
+          destinationName: name,
         ),
       ),
     );
@@ -151,32 +182,26 @@ class CurrentDeliveryCard extends StatelessWidget {
         icon = Icons.check_circle_outline;
         break;
 
-      case 'confirmed':  // ✅ ADDED
+      case 'confirmed':
         bgColor = Colors.green.shade50;
         textColor = Colors.green.shade700;
         displayText = 'Confirmed';
         icon = Icons.verified_outlined;
         break;
 
-      case 'waiting_for_order':  // ✅ ADDED
+      case 'waiting_for_order':
         bgColor = Colors.amber.shade50;
         textColor = Colors.amber.shade700;
         displayText = 'Waiting for Order';
         icon = Icons.hourglass_empty;
         break;
 
-      case 'waiting_for_pickup':  // ✅ ADDED
-        bgColor = Colors.purple.shade50;
-        textColor = Colors.purple.shade700;
-        displayText = 'Ready for Pickup';
-        icon = Icons.shopping_bag;
-        break;
-
+      case 'waiting_for_pickup':
       case 'ready':
       case 'ready_for_pickup':
         bgColor = Colors.purple.shade50;
         textColor = Colors.purple.shade700;
-        displayText = 'Ready';
+        displayText = 'Ready for Pickup';
         icon = Icons.shopping_bag;
         break;
 
@@ -233,7 +258,6 @@ class CurrentDeliveryCard extends StatelessWidget {
     );
   }
 
-
   /// Build Info Row
   Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
     return Row(
@@ -282,10 +306,10 @@ class CurrentDeliveryCard extends StatelessWidget {
   Widget _buildActionButtons(BuildContext context, String status) {
     switch (status.toLowerCase()) {
       case 'accepted':
-      case 'confirmed':  // ✅ ADDED: Handle confirmed status
+      case 'confirmed':
       case 'pending':
-      case 'waiting_for_order':  // ✅ ADDED
-      case 'waiting_for_pickup':  // ✅ ADDED
+      case 'waiting_for_order':
+      case 'waiting_for_pickup':
       case 'ready':
       case 'ready_for_pickup':
         return _buildAcceptedActions(context);
@@ -301,7 +325,6 @@ class CurrentDeliveryCard extends StatelessWidget {
         return const SizedBox.shrink();
     }
   }
-
 
   /// Actions when order is "Accepted" (need to pick up)
   Widget _buildAcceptedActions(BuildContext context) {
@@ -384,7 +407,7 @@ class CurrentDeliveryCard extends StatelessWidget {
                 icon: const Icon(Icons.directions, size: 18),
                 label: const Text('Navigate to Customer'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple,
+                  backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
@@ -422,7 +445,7 @@ class CurrentDeliveryCard extends StatelessWidget {
             icon: const Icon(Icons.local_shipping, size: 20),
             label: const Text('Mark as In Transit'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purple,
+              backgroundColor: Colors.orangeAccent,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
@@ -450,7 +473,7 @@ class CurrentDeliveryCard extends StatelessWidget {
                 icon: const Icon(Icons.directions, size: 18),
                 label: const Text('Navigate to Customer'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.purple,
+                  backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(

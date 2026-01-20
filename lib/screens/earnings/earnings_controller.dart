@@ -1,34 +1,49 @@
-// lib/controllers/earnings_controller.dart
+// controllers/earnings_controller.dart
 import 'package:flutter/material.dart';
-
-import '../../data/repository/earnings_repository.dart';
+import '../../services/earnings_service.dart';
 
 class EarningsController extends ChangeNotifier {
-  final EarningsRepository _repo = EarningsRepository();
+  bool _isLoading = false;
+  String? _error;
 
-  double todayEarnings = 0;
-  double weeklyTotal = 0;
-  double monthlyTotal = 0;
+  double _totalEarnings = 0;
+  int _totalDeliveries = 0;
+  double _avgPerDelivery = 0;
+  List<Map<String, dynamic>> _recent = [];
 
-  List<double> weeklyChartData = [];
-  List<String> weekDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  bool get isLoading => _isLoading;
+  String? get error => _error;
+  double get totalEarnings => _totalEarnings;
+  int get totalDeliveries => _totalDeliveries;
+  double get avgPerDelivery => _avgPerDelivery;
+  List<Map<String, dynamic>> get recent => _recent;
 
-  bool isLoading = false;
-
-  EarningsController() {
-    loadEarnings();
-  }
-
-  Future<void> loadEarnings() async {
-    isLoading = true;
+  Future fetchEarnings(String partnerId, {String period = 'today'}) async {
+    _isLoading = true;
+    _error = null;
     notifyListeners();
 
-    todayEarnings = await _repo.fetchTodayEarnings();
-    weeklyTotal = await _repo.fetchWeeklyEarnings();
-    monthlyTotal = await _repo.fetchMonthlyEarnings();
-    weeklyChartData = await _repo.fetchWeeklyChartData();
+    try {
+      final result = await EarningsService.getPartnerEarnings(
+        deliveryPartnerId: partnerId,
+        period: period,
+      );
 
-    isLoading = false;
-    notifyListeners();
+      if (result['success'] == true) {
+        final stats = result['stats'] ?? {};
+        _totalEarnings   = (stats['total_earnings'] ?? 0).toDouble();
+        _totalDeliveries = (stats['total_deliveries'] ?? 0) as int;
+        _avgPerDelivery  = (stats['avg_per_delivery'] ?? 0).toDouble();
+        _recent = (result['recent_deliveries'] as List? ?? [])
+            .cast<Map<String, dynamic>>();
+      } else {
+        _error = result['message'] ?? 'Failed to load earnings';
+      }
+    } catch (e) {
+      _error = 'Error: $e';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 }
