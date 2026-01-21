@@ -33,8 +33,9 @@ class DeliveryService {
         encoding: Encoding.getByName('utf-8'),
         body: {
           'action': action,
-          'order_id': orderId,
-          'delivery_partner_id': deliveryPartnerId,
+          // use the new param names that PHP expects primarily
+          'orderid': orderId,
+          'deliverypartnerid': deliveryPartnerId,
           if (reason != null) 'reason': reason,
           if (notes != null) 'notes': notes,
         },
@@ -53,7 +54,8 @@ class DeliveryService {
               'message':
               jsonData['message'] ?? 'Action completed successfully',
               'order_id': jsonData['order_id'] ?? orderId,
-              'action': action,
+              'action': jsonData['action'] ?? action,
+              'status': jsonData['status'],
               'data': jsonData['data'],
             };
           } else {
@@ -95,7 +97,8 @@ class DeliveryService {
 
   /// Get active deliveries for delivery partner
   static Future<List<DeliveryModel>> getActiveDeliveries(
-      String partnerId) async {
+      String partnerId,
+      ) async {
     try {
       debugPrint('📋 Fetching active deliveries for partner: $partnerId');
 
@@ -630,12 +633,14 @@ class DeliveryService {
         },
         encoding: Encoding.getByName('utf-8'),
         body: {
-          'delivery_partner_id': deliveryPartnerId,
+          // must match PHP: $_POST['deliverypartnerid']
+          'deliverypartnerid': deliveryPartnerId,
         },
       )
           .timeout(const Duration(seconds: 10));
 
       debugPrint('📥 Partner Stats Response: ${response.statusCode}');
+      debugPrint('📥 Partner Stats Body: ${response.body}');
 
       if (response.statusCode == 200) {
         try {
@@ -645,8 +650,9 @@ class DeliveryService {
             return {
               'success': true,
               'stats': jsonData['stats'] ?? {},
-              'total_deliveries': jsonData['total_deliveries'] ?? 0,
-              'total_earnings': jsonData['total_earnings'] ?? 0.0,
+              // PHP returns 'totaldeliveries' & 'totalearnings'
+              'total_deliveries': jsonData['totaldeliveries'] ?? 0,
+              'total_earnings': jsonData['totalearnings'] ?? 0.0,
               'rating': jsonData['rating'] ?? 0.0,
             };
           } else {

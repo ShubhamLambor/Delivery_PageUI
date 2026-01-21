@@ -126,11 +126,11 @@ class HomeController extends ChangeNotifier {
       if (result['success'] == true && result['stats'] != null) {
         final stats = result['stats'];
 
-        // Parse stats from backend
-        _todayEarnings = int.tryParse(stats['today_earnings']?.toString() ?? '0') ?? 0;
-        _completedToday = int.tryParse(stats['completed_today']?.toString() ?? '0') ?? 0;
-        _pendingToday = int.tryParse(stats['pending_today']?.toString() ?? '0') ?? 0;
-        _cancelledToday = int.tryParse(stats['cancelled_today']?.toString() ?? '0') ?? 0;
+        // Match PHP keys: todayearnings, completedtoday, pendingtoday, cancelledtoday
+        _todayEarnings = int.tryParse(stats['todayearnings']?.toString() ?? '0') ?? 0;
+        _completedToday = int.tryParse(stats['completedtoday']?.toString() ?? '0') ?? 0;
+        _pendingToday = int.tryParse(stats['pendingtoday']?.toString() ?? '0') ?? 0;
+        _cancelledToday = int.tryParse(stats['cancelledtoday']?.toString() ?? '0') ?? 0;
 
         debugPrint('✅ [HOME_CONTROLLER] Stats fetched successfully:');
         debugPrint('   Today Earnings: ₹$_todayEarnings');
@@ -147,6 +147,7 @@ class HomeController extends ChangeNotifier {
       // Don't set error message, stats are optional
     }
   }
+
 
   /// Fetch deliveries from backend
   Future<void> fetchDeliveries() async {
