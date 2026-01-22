@@ -20,6 +20,11 @@ class DeliveryModel {
   final String? messPhone;
   final String? paymentMethod;
 
+  // Distance fields
+  final String distBoyToMess;    // Distance from delivery boy to mess
+  final String distMessToCust;   // Distance from mess to customer
+  final String totalDistance;    // Total distance for the delivery
+
   DeliveryModel({
     required this.id,
     String? orderId,
@@ -39,6 +44,9 @@ class DeliveryModel {
     this.messAddress,
     this.messPhone,
     this.paymentMethod,
+    required this.distBoyToMess,
+    required this.distMessToCust,
+    required this.totalDistance,
   }) : orderId = orderId ?? id;
 
   /// ✅ Parse from backend JSON
@@ -65,16 +73,18 @@ class DeliveryModel {
           json['created_at']?.toString() ??
           json['time']?.toString() ??
           DateTime.now().toString(),
-      // ✅ FIXED: Keep original status from backend
       status: json['assignment_status']?.toString() ??
           json['status']?.toString() ?? 'assigned',
       messName: json['mess_name']?.toString(),
       messAddress: json['mess_address']?.toString(),
       messPhone: json['mess_phone']?.toString(),
       paymentMethod: json['payment_method']?.toString() ?? 'cash',
+      // Parse distance fields from API response
+      distBoyToMess: json['dist_boy_to_mess']?.toString() ?? '0.00',
+      distMessToCust: json['dist_mess_to_cust']?.toString() ?? '0.00',
+      totalDistance: json['total_distance']?.toString() ?? '0.00',
     );
   }
-
 
   /// ✅ Helper method to get display-friendly status for UI
   String get displayStatus {
@@ -141,6 +151,9 @@ class DeliveryModel {
       'mess_address': messAddress,
       'mess_phone': messPhone,
       'payment_method': paymentMethod,
+      'dist_boy_to_mess': distBoyToMess,
+      'dist_mess_to_cust': distMessToCust,
+      'total_distance': totalDistance,
     };
   }
 
@@ -164,6 +177,9 @@ class DeliveryModel {
     String? messAddress,
     String? messPhone,
     String? paymentMethod,
+    String? distBoyToMess,
+    String? distMessToCust,
+    String? totalDistance,
   }) {
     return DeliveryModel(
       id: id ?? this.id,
@@ -184,6 +200,9 @@ class DeliveryModel {
       messAddress: messAddress ?? this.messAddress,
       messPhone: messPhone ?? this.messPhone,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+      distBoyToMess: distBoyToMess ?? this.distBoyToMess,
+      distMessToCust: distMessToCust ?? this.distMessToCust,
+      totalDistance: totalDistance ?? this.totalDistance,
     );
   }
 
@@ -191,4 +210,48 @@ class DeliveryModel {
   String get deliveryAddressOrDefault => deliveryAddress ?? address;
   String get totalAmountOrDefault => totalAmount ?? amount;
   String get messNameOrDefault => messName ?? item;
+
+  /// ✅ Distance helper methods - Get distances as doubles for calculations
+  double get distBoyToMessKm => double.tryParse(distBoyToMess) ?? 0.0;
+  double get distMessToCustKm => double.tryParse(distMessToCust) ?? 0.0;
+  double get totalDistanceKm => double.tryParse(totalDistance) ?? 0.0;
+
+  /// ✅ Formatted distance strings for UI display
+  String get formattedDistBoyToMess => '${distBoyToMessKm.toStringAsFixed(1)} km';
+  String get formattedDistMessToCust => '${distMessToCustKm.toStringAsFixed(1)} km';
+  String get formattedTotalDistance => '${totalDistanceKm.toStringAsFixed(1)} km';
+
+  /// ✅ Check if distance data is available
+  bool get hasDistanceData =>
+      distBoyToMessKm > 0 || distMessToCustKm > 0 || totalDistanceKm > 0;
+
+  /// ✅ Calculate estimated earnings based on distance
+  /// Assuming ₹10 base + ₹8 per km
+  double get estimatedEarnings {
+    const baseRate = 10.0;
+    const perKmRate = 8.0;
+    return baseRate + (totalDistanceKm * perKmRate);
+  }
+
+  /// ✅ Get formatted estimated earnings
+  String get formattedEstimatedEarnings =>
+      '₹${estimatedEarnings.toStringAsFixed(2)}';
+
+  /// ✅ Get distance breakdown as a readable string
+  String get distanceBreakdown =>
+      'To Mess: $formattedDistBoyToMess | Mess to Customer: $formattedDistMessToCust | Total: $formattedTotalDistance';
+
+  @override
+  String toString() {
+    return 'DeliveryModel(id: $id, orderId: $orderId, customer: $customerName, status: $status, totalDistance: $formattedTotalDistance)';
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is DeliveryModel && other.id == id && other.orderId == orderId;
+  }
+
+  @override
+  int get hashCode => id.hashCode ^ orderId.hashCode;
 }

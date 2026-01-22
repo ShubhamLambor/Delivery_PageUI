@@ -14,6 +14,12 @@ final List<DeliveryModel> dummyDeliveries = [
     amount: '99',           // ✅ ADDED
     time: '12:30 PM',       // ✅ ADDED
     status: 'Pending',
+
+    // NEW: Add distance fields
+    distBoyToMess: '2.5',
+    distMessToCust: '3.2',
+    totalDistance: '5.7',
+
   ),
   DeliveryModel(
     id: '2',
@@ -26,6 +32,13 @@ final List<DeliveryModel> dummyDeliveries = [
     amount: '120',          // ✅ ADDED
     time: '1:00 PM',        // ✅ ADDED
     status: 'Pending',
+
+
+    // NEW: Add distance fields
+    distBoyToMess: '2.5',
+    distMessToCust: '3.2',
+    totalDistance: '5.7',
+
   ),
   DeliveryModel(
     id: '3',
@@ -38,6 +51,12 @@ final List<DeliveryModel> dummyDeliveries = [
     amount: '150',          // ✅ ADDED
     time: '7:30 PM',        // ✅ ADDED
     status: 'Pending',
+
+
+    // NEW: Add distance fields
+    distBoyToMess: '2.5',
+    distMessToCust: '3.2',
+    totalDistance: '5.7',
   ),
   DeliveryModel(
     id: '4',
@@ -50,6 +69,12 @@ final List<DeliveryModel> dummyDeliveries = [
     amount: '99',           // ✅ ADDED
     time: '12:00 PM',       // ✅ ADDED
     status: 'Completed',
+
+
+    // NEW: Add distance fields
+    distBoyToMess: '2.5',
+    distMessToCust: '3.2',
+    totalDistance: '5.7',
   ),
   DeliveryModel(
     id: '5',
@@ -62,6 +87,12 @@ final List<DeliveryModel> dummyDeliveries = [
     amount: '99',           // ✅ ADDED
     time: '1:15 PM',        // ✅ ADDED
     status: 'Completed',
+
+
+    // NEW: Add distance fields
+    distBoyToMess: '2.5',
+    distMessToCust: '3.2',
+    totalDistance: '5.7',
   ),
   DeliveryModel(
     id: '6',
@@ -74,5 +105,11 @@ final List<DeliveryModel> dummyDeliveries = [
     amount: '120',          // ✅ ADDED
     time: '8:00 PM',        // ✅ ADDED
     status: 'Cancelled',
+
+
+    // NEW: Add distance fields
+    distBoyToMess: '2.5',
+    distMessToCust: '3.2',
+    totalDistance: '5.7',
   ),
 ];

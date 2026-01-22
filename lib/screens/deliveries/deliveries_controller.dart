@@ -160,11 +160,19 @@ class DeliveriesController extends ChangeNotifier {
       amount: delivery.amount,
       time: delivery.time,
       status: newStatus, // UI-normalized status
+      messName: delivery.messName,
+      messAddress: delivery.messAddress,
+      messPhone: delivery.messPhone,
+      // ✅ ADD: Preserve distance fields
+      distBoyToMess: delivery.distBoyToMess,
+      distMessToCust: delivery.distMessToCust,
+      totalDistance: delivery.totalDistance,
     );
 
     _repo.addOrUpdateOrder(updated);
     notifyListeners();
   }
+
 
   /// ✅ Fetch/refresh all deliveries from backend
   Future fetchDeliveries() async {

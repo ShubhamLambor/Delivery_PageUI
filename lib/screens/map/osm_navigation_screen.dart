@@ -1,10 +1,9 @@
-// lib/screens/map/osm_navigation_screen.dart
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_osm_plugin/flutter_osm_plugin.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:flutter/services.dart';
-import 'dart:async';
-import 'dart:math' as math;
 
 class OSMNavigationScreen extends StatefulWidget {
   final double destinationLat;
@@ -24,634 +23,346 @@ class OSMNavigationScreen extends StatefulWidget {
 
 class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     with SingleTickerProviderStateMixin {
-  MapController? mapController;
-  GeoPoint? currentLocation;
-  RoadInfo? roadInfo;
-  bool isLoadingRoute = false;
-  bool isMapReady = false;
-  bool isInitializing = true;
+  // --- Controllers ---
+  late MapController mapController;
   late AnimationController _pulseController;
 
-  StreamSubscription<Position>? _positionStreamSubscription;
-  bool isTrackingEnabled = true;
-  double currentSpeed = 0.0;
-  double currentHeading = 0.0;
-  Timer? _routeUpdateTimer;
-  GeoPoint? lastRouteUpdateLocation;
+  // --- State Variables ---
+  GeoPoint? _currentLocation;
+  RoadInfo? _roadInfo;
+  bool _isMapReady = false;
+  bool _isTracking = true; // Auto-follow user
+  bool _isLoadingRoute = false;
+  double _currentSpeed = 0.0;
+  double _currentHeading = 0.0;
+  double? _remainingDistanceKm;
 
-  bool _markersAdded = false;
-  double? remainingDistance;
+  // --- Streams ---
+  StreamSubscription<Position>? _positionStream;
 
-  // Clean modern color palette
-  static const Color primaryBlue = Color(0xFF2563EB);
-  static const Color accentGreen = Color(0xFF10B981);
-  static const Color darkGray = Color(0xFF1F2937);
-  static const Color lightGray = Color(0xFF6B7280);
+  // --- Constants ---
+  static const Color primaryColor = Color(0xFF2563EB); // Royal Blue
+  static const Color accentColor = Color(0xFF10B981); // Emerald Green
+  static const Color darkText = Color(0xFF1F2937);
 
   @override
   void initState() {
     super.initState();
+    // Keep screen on for navigation (optional system UI mode tweak)
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
-
+    // Pulse animation for rider marker
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    _initializeController();
-  }
-
-  Future<void> _initializeController() async {
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          throw Exception('Location permissions denied');
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        throw Exception('Location permissions permanently denied');
-      }
-
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
-      );
-
-      currentLocation = GeoPoint(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-      currentHeading = position.heading;
-
-      _updateRemainingDistance(currentLocation!);
-
-    } catch (e) {
-      debugPrint('❌ Error getting location: $e');
-
-      currentLocation = GeoPoint(
-        latitude: widget.destinationLat,
-        longitude: widget.destinationLng,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Location error: ${e.toString()}'),
-            backgroundColor: Colors.orange.shade600,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    }
-
+    // Initialize Map Controller
     mapController = MapController(
-      initPosition: currentLocation!,
-    );
-
-    if (mounted) {
-      setState(() {
-        isInitializing = false;
-      });
-    }
-  }
-
-  Future<void> _onMapReady() async {
-    if (!mounted) return;
-    setState(() => isMapReady = true);
-    await Future.delayed(const Duration(milliseconds: 500));
-    await _drawRoute();
-    _startLiveTracking();
-  }
-
-  void _startLiveTracking() {
-    const LocationSettings locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
-    );
-
-    _positionStreamSubscription = Geolocator.getPositionStream(
-      locationSettings: locationSettings,
-    ).listen((Position position) async {
-      if (!mounted || !isTrackingEnabled) return;
-
-      currentSpeed = (position.speed * 3.6);
-      currentHeading = position.heading;
-
-      final newLocation = GeoPoint(
-        latitude: position.latitude,
-        longitude: position.longitude,
-      );
-
-      _updateRemainingDistance(newLocation);
-
-      if (mounted) setState(() => currentLocation = newLocation);
-
-      await _updateCurrentLocationMarker(newLocation);
-
-      if (_shouldUpdateRoute(newLocation)) {
-        await _updateRoute(newLocation);
-        lastRouteUpdateLocation = newLocation;
-      }
-
-      if (remainingDistance != null && remainingDistance! < 0.02) {
-        _showArrivalDialog();
-      }
-    });
-  }
-
-  void _updateRemainingDistance(GeoPoint current) {
-    final distance = Geolocator.distanceBetween(
-      current.latitude,
-      current.longitude,
-      widget.destinationLat,
-      widget.destinationLng,
-    );
-    remainingDistance = distance / 1000;
-  }
-
-  bool _shouldUpdateRoute(GeoPoint newLocation) {
-    if (lastRouteUpdateLocation == null) return true;
-    final distance = Geolocator.distanceBetween(
-      lastRouteUpdateLocation!.latitude,
-      lastRouteUpdateLocation!.longitude,
-      newLocation.latitude,
-      newLocation.longitude,
-    );
-    return distance > 50;
-  }
-
-  Future<void> _updateCurrentLocationMarker(GeoPoint newLocation) async {
-    if (!isMapReady || mapController == null) return;
-    try {
-      if (isTrackingEnabled) {
-        await mapController!.changeLocation(newLocation);
-      }
-    } catch (e) {
-      debugPrint('❌ Error updating marker: $e');
-    }
-  }
-
-  Future<void> _updateRoute(GeoPoint newLocation) async {
-    if (!isMapReady || mapController == null || !mounted) return;
-
-    try {
-      final destination = GeoPoint(
-        latitude: widget.destinationLat,
-        longitude: widget.destinationLng,
-      );
-
-      await mapController!.clearAllRoads();
-
-      roadInfo = await mapController!.drawRoad(
-        newLocation,
-        destination,
-        roadType: RoadType.car,
-        roadOption: RoadOption(
-          roadWidth: 10,
-          roadColor: accentGreen,
-          roadBorderWidth: 2,
-          roadBorderColor: Colors.white,
-          zoomInto: false,
-        ),
-      );
-
-      if (mounted) setState(() {});
-    } catch (e) {
-      debugPrint('❌ Error updating route: $e');
-    }
-  }
-
-  Future<void> _drawRoute() async {
-    if (!isMapReady || mapController == null || !mounted) return;
-
-    setState(() => isLoadingRoute = true);
-
-    try {
-      final destination = GeoPoint(
-        latitude: widget.destinationLat,
-        longitude: widget.destinationLng,
-      );
-
-      if (!_markersAdded) {
-        await mapController!.addMarker(
-          currentLocation!,
-          markerIcon: MarkerIcon(
-            iconWidget: _buildRiderMarker(
-              size: 80,
-              rotation: currentHeading,
-            ),
-          ),
-        );
-
-        await mapController!.addMarker(
-          destination,
-          markerIcon: MarkerIcon(
-            iconWidget: _buildDestinationMarker(size: 60),
-          ),
-        );
-
-        _markersAdded = true;
-      }
-
-      roadInfo = await mapController!.drawRoad(
-        currentLocation!,
-        destination,
-        roadType: RoadType.car,
-        roadOption: RoadOption(
-          roadWidth: 10,
-          roadColor: accentGreen,
-          roadBorderWidth: 2,
-          roadBorderColor: Colors.white,
-          zoomInto: true,
-        ),
-      );
-
-      lastRouteUpdateLocation = currentLocation;
-
-    } catch (e) {
-      debugPrint('❌ Error drawing route: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Failed to calculate route. Please check your internet connection.'),
-            backgroundColor: Colors.red.shade600,
-            behavior: SnackBarBehavior.floating,
-            margin: const EdgeInsets.all(16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            action: SnackBarAction(
-              label: 'Retry',
-              textColor: Colors.white,
-              onPressed: _drawRoute,
-            ),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => isLoadingRoute = false);
-    }
-  }
-
-  void _showArrivalDialog() {
-    if (!mounted) return;
-
-    setState(() => isTrackingEnabled = false);
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.celebration, color: accentGreen, size: 28),
-            SizedBox(width: 12),
-            Text('Arrived!'),
-          ],
-        ),
-        content: Text('You have arrived at ${widget.destinationName}'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-            },
-            child: const Text('Done'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              setState(() => isTrackingEnabled = true);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: accentGreen,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Continue'),
-          ),
-        ],
+      initMapWithUserPosition: const UserTrackingOption(
+        enableTracking: true,
+        unFollowUser: false,
       ),
     );
-  }
-
-  Widget _buildRiderMarker({required double size, double rotation = 0}) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        AnimatedBuilder(
-          animation: _pulseController,
-          builder: (context, child) {
-            return Container(
-              width: size + (12 * _pulseController.value),
-              height: size + (12 * _pulseController.value),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: primaryBlue.withOpacity(0.15 * (1 - _pulseController.value)),
-              ),
-            );
-          },
-        ),
-        Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: primaryBlue, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-        ),
-        Transform.rotate(
-          angle: rotation * (math.pi / 180),
-          child: Icon(
-            Icons.navigation,
-            color: primaryBlue,
-            size: size * 0.6,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDestinationMarker({required double size}) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Icon(
-        Icons.location_on,
-        color: accentGreen,
-        size: size * 0.85,
-      ),
-    );
-  }
-
-  Future<void> _showMyLocation() async {
-    if (currentLocation != null && isMapReady && mapController != null) {
-      setState(() => isTrackingEnabled = true);
-      await mapController!.goToLocation(currentLocation!);
-      await Future.delayed(const Duration(milliseconds: 100));
-      await mapController!.setZoom(zoomLevel: 17);
-    }
-  }
-
-  Future<void> _showDestination() async {
-    if (!isMapReady || mapController == null) return;
-    setState(() => isTrackingEnabled = false);
-    final destination = GeoPoint(
-      latitude: widget.destinationLat,
-      longitude: widget.destinationLng,
-    );
-    await mapController!.goToLocation(destination);
-    await Future.delayed(const Duration(milliseconds: 100));
-    await mapController!.setZoom(zoomLevel: 17);
   }
 
   @override
   void dispose() {
-    _positionStreamSubscription?.cancel();
-    _routeUpdateTimer?.cancel();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+    _positionStream?.cancel();
+    mapController.dispose();
     _pulseController.dispose();
-    mapController?.dispose();
     super.dispose();
   }
+
+  // --- Logic ---
+
+  Future<void> _onMapReady(bool isReady) async {
+    if (!isReady) return;
+
+    if (mounted) {
+      setState(() => _isMapReady = true);
+    }
+
+    // 1. Get Initial Location
+    try {
+      Position pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      if (!mounted) return;
+
+      _currentLocation =
+          GeoPoint(latitude: pos.latitude, longitude: pos.longitude);
+
+      // 2. Add Destination Marker
+      await mapController.addMarker(
+        GeoPoint(
+            latitude: widget.destinationLat, longitude: widget.destinationLng),
+        markerIcon: const MarkerIcon(
+          icon: Icon(Icons.location_on, color: Colors.red, size: 48),
+        ),
+      );
+
+      // 3. Draw Initial Route
+      await _calculateRoute();
+
+      // 4. Start Live Tracking
+      _startTracking();
+    } catch (e) {
+      debugPrint("❌ Map Init Error: $e");
+    }
+  }
+
+  Future<void> _calculateRoute() async {
+    if (_currentLocation == null) return;
+    if (mounted) setState(() => _isLoadingRoute = true);
+
+    try {
+      // Clear old roads if needed
+      // await mapController.clearAllRoads();
+
+      _roadInfo = await mapController.drawRoad(
+        _currentLocation!,
+        GeoPoint(
+            latitude: widget.destinationLat, longitude: widget.destinationLng),
+        roadType: RoadType.car,
+        roadOption: const RoadOption(
+          roadWidth: 10,
+          roadColor: primaryColor,
+          roadBorderWidth: 3,
+          roadBorderColor: Colors.white,
+          zoomInto: true, // Auto-zoom to fit route initially
+        ),
+      );
+
+      // Update distance text
+      if (_roadInfo?.distance != null && mounted) {
+        setState(() {
+          _remainingDistanceKm = _roadInfo!.distance;
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ Route Error: $e");
+    } finally {
+      if (mounted) setState(() => _isLoadingRoute = false);
+    }
+  }
+
+  void _startTracking() {
+    const settings = LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 5, // Update every 5 meters
+    );
+
+    _positionStream = Geolocator.getPositionStream(locationSettings: settings)
+        .listen((Position pos) {
+      if (!mounted) return;
+
+      final newGeo = GeoPoint(latitude: pos.latitude, longitude: pos.longitude);
+
+      setState(() {
+        _currentLocation = newGeo;
+        _currentSpeed = (pos.speed * 3.6); // Convert m/s to km/h
+        _currentHeading = pos.heading;
+
+        // Simple distance calculation for UI updates
+        final distMeters = Geolocator.distanceBetween(
+          pos.latitude,
+          pos.longitude,
+          widget.destinationLat,
+          widget.destinationLng,
+        );
+        _remainingDistanceKm = distMeters / 1000;
+      });
+
+      // Arrival check (< 50 meters)
+      if (_remainingDistanceKm != null && _remainingDistanceKm! < 0.05) {
+        _showArrivalDialog();
+      }
+
+      // Auto-center map if tracking enabled
+      if (_isTracking && _isMapReady) {
+        mapController.moveTo(newGeo, animate: true);
+        // Optional: Rotate map
+        // mapController.rotateMapCamera(_currentHeading);
+      }
+    });
+  }
+
+  void _recenter() {
+    if (mounted) setState(() => _isTracking = true);
+    if (_currentLocation != null) {
+      mapController.moveTo(_currentLocation!, animate: true);
+      mapController.setZoom(zoomLevel: 18);
+    }
+  }
+
+  void _showArrivalDialog() {
+    // Prevent multiple dialogs
+    _positionStream?.pause();
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Column(
+          children: [
+            Icon(Icons.check_circle, color: accentColor, size: 60),
+            SizedBox(height: 10),
+            Text("You have arrived!", style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          "You are at ${widget.destinationName}",
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 16),
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pop(context); // Go back to app
+              },
+              child: const Text("Complete Delivery",
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+
+  // --- UI Construction ---
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      extendBodyBehindAppBar: true,
-      body: isInitializing || mapController == null
-          ? _buildLoadingScreen()
-          : Stack(
+      body: Stack(
         children: [
+          // 1. The Map
           OSMFlutter(
-            controller: mapController!,
-            onMapIsReady: (isReady) {
-              if (isReady) _onMapReady();
-            },
+            controller: mapController,
+            onMapIsReady: _onMapReady,
             osmOption: OSMOption(
               userTrackingOption: const UserTrackingOption(
-                enableTracking: false,
-                unFollowUser: true,
+                enableTracking: true,
+                unFollowUser: false,
               ),
               zoomOption: const ZoomOption(
-                initZoom: 17,
-                minZoomLevel: 10,
+                initZoom: 18,
+                minZoomLevel: 4,
                 maxZoomLevel: 19,
+                stepZoom: 1.0,
               ),
-              staticPoints: const [],
-              showDefaultInfoWindow: false,
+              userLocationMarker: UserLocationMaker(
+                personMarker: const MarkerIcon(
+                  icon: Icon(Icons.navigation, color: primaryColor, size: 48),
+                ),
+                directionArrowMarker: const MarkerIcon(
+                  icon: Icon(Icons.navigation, color: primaryColor, size: 48),
+                ),
+              ),
+              roadConfiguration: const RoadOption(
+                roadColor: Colors.blueGrey,
+              ),
             ),
           ),
-          _buildTopHeader(),
-          _buildFloatingControls(),
-          _buildBottomCTA(),
-          if (isLoadingRoute) _buildLoadingOverlay(),
-        ],
-      ),
-    );
-  }
 
-  // ✅ FIXED: Top Floating Header (No Overflow)
-  Widget _buildTopHeader() {
-    return Positioned(
-      top: 50,
-      left: 16,
-      right: 16,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), // ✅ Reduced padding
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Back button
-            InkWell(
-              onTap: () => Navigator.pop(context),
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.arrow_back, size: 20),
-              ),
-            ),
-            const SizedBox(width: 12),
-            // Destination info - ✅ WRAPPED IN EXPANDED
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min, // ✅ Added
-                children: [
-                  Text(
-                    widget.destinationName,
-                    style: const TextStyle(
-                      fontSize: 14, // ✅ Reduced from 15
-                      fontWeight: FontWeight.w700,
-                      color: darkGray,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+          // 2. Top Header (Destination)
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 16,
+            right: 16,
+            child: _buildTopCard(),
+          ),
+
+          // 3. Bottom Information Card
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _buildBottomCard(),
+          ),
+
+          // 4. Floating Action Buttons (Recenter & Speed)
+          Positioned(
+            bottom: 220, // Above the bottom card
+            right: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                FloatingActionButton(
+                  heroTag: "recenter",
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    _isTracking ? Icons.gps_fixed : Icons.gps_not_fixed,
+                    color: _isTracking ? primaryColor : Colors.grey,
                   ),
-                  if (roadInfo != null) ...[
-                    const SizedBox(height: 4),
-                    // ✅ FIXED: Wrapped Row in Flexible to prevent overflow
-                    Flexible(
-                      child: Row(
+                  onPressed: _recenter,
+                ),
+                const SizedBox(height: 12),
+                if (_currentSpeed > 2) ...[
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        )
+                      ],
+                    ),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.route, size: 13, color: lightGray), // ✅ Reduced size
-                          const SizedBox(width: 3),
-                          Flexible( // ✅ Added Flexible
-                            child: Text(
-                              '${(roadInfo!.distance ?? 0).toStringAsFixed(1)} km',
-                              style: TextStyle(
-                                fontSize: 12, // ✅ Reduced from 13
-                                fontWeight: FontWeight.w600,
-                                color: lightGray,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                          Text(
+                            _currentSpeed.toStringAsFixed(0),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                              color: darkText,
+                              height: 1.0,
                             ),
                           ),
-                          const SizedBox(width: 8), // ✅ Reduced from 12
-                          Icon(Icons.access_time, size: 13, color: lightGray), // ✅ Reduced size
-                          const SizedBox(width: 3),
-                          Flexible( // ✅ Added Flexible
-                            child: Text(
-                              '${((roadInfo!.duration ?? 0) / 60).toStringAsFixed(0)} min',
-                              style: TextStyle(
-                                fontSize: 12, // ✅ Reduced from 13
-                                fontWeight: FontWeight.w600,
-                                color: lightGray,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
+                          const Text(
+                            "km/h",
+                            style: TextStyle(fontSize: 10, color: Colors.grey, height: 1.0),
+                          )
                         ],
                       ),
                     ),
-                  ],
-                ],
-              ),
+                  )
+                ]
+              ],
             ),
-            const SizedBox(width: 8), // ✅ Added spacing
-            // Status pill
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), // ✅ Reduced padding
-              decoration: BoxDecoration(
-                color: accentGreen.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 5, // ✅ Reduced from 6
-                    height: 5, // ✅ Reduced from 6
-                    decoration: const BoxDecoration(
-                      color: accentGreen,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 5), // ✅ Reduced from 6
-                  Text(
-                    isTrackingEnabled ? 'Active' : 'Paused', // ✅ Shortened text
-                    style: const TextStyle(
-                      fontSize: 10, // ✅ Reduced from 11
-                      fontWeight: FontWeight.w600,
-                      color: accentGreen,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFloatingControls() {
-    return Positioned(
-      right: 16,
-      top: 150,
-      child: Column(
-        children: [
-          _buildCircularButton(
-            icon: Icons.my_location_rounded,
-            onTap: _showMyLocation,
           ),
-          const SizedBox(height: 12),
-          if (currentSpeed > 1)
+
+          // 5. Loading Indicator
+          if (_isLoadingRoute || !_isMapReady)
             Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    currentSpeed.toStringAsFixed(0),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: primaryBlue,
-                    ),
-                  ),
-                  Text(
-                    'km/h',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w600,
-                      color: lightGray,
-                    ),
-                  ),
-                ],
+              color: Colors.white.withOpacity(0.8),
+              child: const Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: primaryColor),
+                    SizedBox(height: 16),
+                    Text("Loading Map...", style: TextStyle(color: darkText, fontWeight: FontWeight.bold)),
+                  ],
+                ),
               ),
             ),
         ],
@@ -659,141 +370,172 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     );
   }
 
-  Widget _buildCircularButton({required IconData icon, required VoidCallback onTap}) {
-    return Material(
-      color: Colors.white,
-      shape: const CircleBorder(),
-      elevation: 0,
-      shadowColor: Colors.black.withOpacity(0.1),
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 12,
-                offset: const Offset(0, 4),
-              ),
-            ],
+  Widget _buildTopCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 5),
           ),
-          child: Icon(icon, color: darkGray, size: 24),
-        ),
+        ],
       ),
-    );
-  }
-
-  Widget _buildBottomCTA() {
-    return Positioned(
-      bottom: 30,
-      left: 16,
-      right: 16,
-      child: Material(
-        elevation: 0,
-        borderRadius: BorderRadius.circular(30),
-        child: InkWell(
-          onTap: _showDestination,
-          borderRadius: BorderRadius.circular(30),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [accentGreen, accentGreen.withOpacity(0.8)],
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
               ),
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: [
-                BoxShadow(
-                  color: accentGreen.withOpacity(0.3),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+              child: const Icon(Icons.arrow_back, color: Colors.black87),
             ),
-            child: const Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.location_on_rounded, color: Colors.white, size: 22),
-                SizedBox(width: 10),
-                Text(
-                  'View Destination',
+                const Text(
+                  "Navigating to",
                   style: TextStyle(
-                    color: Colors.white,
+                    color: Colors.grey,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  widget.destinationName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: darkText,
                     fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildLoadingScreen() {
+  Widget _buildBottomCard() {
+    final distStr = _remainingDistanceKm != null
+        ? "${_remainingDistanceKm!.toStringAsFixed(1)} km"
+        : "--";
+
+    // Estimate time: assume 30km/h avg speed in city
+    final minutes = _remainingDistanceKm != null
+        ? (_remainingDistanceKm! / 30 * 60).round()
+        : 0;
+    final timeStr = minutes >= 60
+        ? "${(minutes / 60).toStringAsFixed(1)} hr"
+        : "$minutes min";
+
+    // Estimate Arrival Time
+    final now = DateTime.now();
+    final arrivalTime = now.add(Duration(minutes: minutes));
+    final arrivalStr = "${arrivalTime.hour}:${arrivalTime.minute.toString().padLeft(2, '0')}";
+
     return Container(
-      color: Colors.white,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: primaryBlue.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Center(
-                child: CircularProgressIndicator(
-                  color: primaryBlue,
-                  strokeWidth: 3,
-                ),
-              ),
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 20,
+            offset: Offset(0, -5),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
             ),
-            const SizedBox(height: 20),
-            const Text(
-              'Loading navigation...',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: darkGray,
+          ),
+          const SizedBox(height: 20),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildStatItem(Icons.access_time_filled, timeStr, "Est. Time"),
+              Container(width: 1, height: 40, color: Colors.grey[200]),
+              _buildStatItem(Icons.near_me, distStr, "Distance"),
+              Container(width: 1, height: 40, color: Colors.grey[200]),
+              _buildStatItem(Icons.schedule, arrivalStr, "Arrival"),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.check_circle_outline),
+              label: const Text("Arrived at Location",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: accentColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+              ),
+              onPressed: _showArrivalDialog,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatItem(IconData icon, String value, String label) {
+    return Column(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: primaryColor),
+            const SizedBox(width: 6),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: darkText,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingOverlay() {
-    return Container(
-      color: Colors.black.withOpacity(0.3),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: primaryBlue, strokeWidth: 3),
-              SizedBox(height: 16),
-              Text(
-                'Calculating route...',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ],
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w500,
           ),
         ),
-      ),
+      ],
     );
   }
 }
