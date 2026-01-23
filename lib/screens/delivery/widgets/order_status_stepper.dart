@@ -10,9 +10,23 @@ class OrderStatusStepper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final steps = ['Accepted', 'Picked Up', 'Delivered'];
-    final statuses = ['accepted', 'picked_up', 'delivered'];
-    final currentIndex = statuses.indexOf(currentStatus.toLowerCase());
+    // ✅ Updated to 4 steps
+    final steps = ['Accepted', 'Ready', 'Picked Up', 'Delivered'];
+    final statuses = ['accepted', 'ready', 'picked_up', 'delivered'];
+
+    final status = currentStatus.toLowerCase().trim();
+
+    // ✅ Map various statuses to step indices
+    int currentIndex = 0;
+    if (status == 'accepted' || status == 'confirmed' || status == 'waiting_for_order' || status.isEmpty) {
+      currentIndex = 0;
+    } else if (status == 'ready' || status == 'ready_for_pickup' || status == 'reached_pickup' || status == 'at_pickup_location') {
+      currentIndex = 1;
+    } else if (status == 'picked_up' || status == 'out_for_delivery' || status == 'in_transit') {
+      currentIndex = 2;
+    } else if (status == 'delivered') {
+      currentIndex = 3;
+    }
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -34,10 +48,9 @@ class OrderStatusStepper extends StatelessWidget {
           return Expanded(
             child: Row(
               children: [
-                // ✅ FIXED: Step Circle with proper constraints
                 Expanded(
                   child: Column(
-                    mainAxisSize: MainAxisSize.min, // ✅ Added
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Container(
                         width: 32,
@@ -57,7 +70,6 @@ class OrderStatusStepper extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 6),
-                      // ✅ FIXED: Text with proper overflow handling
                       Text(
                         steps[index],
                         style: TextStyle(
@@ -66,19 +78,17 @@ class OrderStatusStepper extends StatelessWidget {
                           color: isActive ? Colors.green : Colors.grey[600],
                         ),
                         textAlign: TextAlign.center,
-                        maxLines: 1, // ✅ Limit to 1 line
-                        overflow: TextOverflow.ellipsis, // ✅ Add ellipsis for long text
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
-
-                // ✅ FIXED: Connector Line with proper sizing
                 if (!isLast)
-                  Flexible( // ✅ Changed from Expanded to Flexible
+                  Flexible(
                     child: Container(
                       height: 2,
-                      margin: const EdgeInsets.only(bottom: 24, left: 4, right: 4), // ✅ Added horizontal margin
+                      margin: const EdgeInsets.only(bottom: 24, left: 4, right: 4),
                       color: isActive ? Colors.green : Colors.grey[300],
                     ),
                   ),

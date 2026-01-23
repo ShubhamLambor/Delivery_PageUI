@@ -1,6 +1,7 @@
 // lib/screens/delivery/order_tracking_controller.dart
 
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../../services/delivery_service.dart';
@@ -29,6 +30,7 @@ class OrderTrackingController extends ChangeNotifier {
   String messAddress = '';
   String messPhone = '';
   double orderAmount = 0.0;
+  double deliveryFee = 0.0; // ✅ Added for earnings display
   String paymentMethod = '';
   List<Map<String, dynamic>> items = [];
 
@@ -91,6 +93,7 @@ class OrderTrackingController extends ChangeNotifier {
           messAddress = order['mess_address'] ?? '';
           messPhone = order['mess_phone'] ?? '';
           orderAmount = double.tryParse(order['total_amount'].toString()) ?? 0.0;
+          deliveryFee = double.tryParse(order['delivery_fee'].toString()) ?? 0.0; // ✅ Added
           paymentMethod = order['payment_method'] ?? '';
 
           // Parse coordinates
@@ -132,6 +135,7 @@ class OrderTrackingController extends ChangeNotifier {
           debugPrint('   Customer: $customerName');
           debugPrint('   Mess: $messName');
           debugPrint('   Amount: ₹$orderAmount');
+          debugPrint('   Delivery Fee: ₹$deliveryFee'); // ✅ Added
           debugPrint('   Status: $orderStatus');
           debugPrint('   Items: ${items.length}');
         } else {
@@ -269,17 +273,34 @@ class OrderTrackingController extends ChangeNotifier {
     }
   }
 
-  /// Get estimated delivery time based on distance
-  String get estimatedDeliveryTime {
-    // TODO: Implement actual calculation based on pickup/delivery locations
-    return '25-30 mins';
-  }
-
   /// Get total distance between pickup and delivery points
   String get totalDistance {
-    // TODO: Implement haversine formula or use Google Distance Matrix API
-    return '5.2 km';
+    if (pickupLat == null || deliveryLat == null) return '--';
+    final dist = _calculateDistance(pickupLat!, pickupLng!, deliveryLat!, deliveryLng!);
+    return '${dist.toStringAsFixed(1)} km';
   }
+
+  /// Get estimated delivery time based on distance
+  String get estimatedDeliveryTime {
+    if (pickupLat == null || deliveryLat == null) return '--';
+    final dist = _calculateDistance(pickupLat!, pickupLng!, deliveryLat!, deliveryLng!);
+    final mins = ((dist / 30) * 60).round(); // Assume 30 km/h avg speed
+    return '$mins mins';
+  }
+
+  /// Calculate distance using Haversine formula
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const R = 6371; // Earth radius in km
+    final dLat = _toRadians(lat2 - lat1);
+    final dLon = _toRadians(lon2 - lon1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
+            sin(dLon / 2) * sin(dLon / 2);
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return R * c;
+  }
+
+  double _toRadians(double deg) => deg * (pi / 180);
 
   /// Set order details manually (useful when data comes from parent screen)
   void setOrderDetails({

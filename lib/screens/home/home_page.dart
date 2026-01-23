@@ -32,6 +32,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   Timer? pollingTimer;
+  String? _lastShownOrderId;  // ✅ ADDED: Track shown popups
 
   @override
   void initState() {
@@ -113,7 +114,11 @@ class _HomePageState extends State<HomePage> {
 
           // ✅ FIX: Cast Map to Map<String, dynamic>
           if (mounted) {
-            showNewOrderDialog(Map<String, dynamic>.from(assignment));
+            await showNewOrderDialog(Map<String, dynamic>.from(assignment));
+            // ✅ Restart polling after dialog closes
+            if (mounted) {
+              startPolling();
+            }
           }
         }
       } catch (e) {
@@ -183,9 +188,8 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-
-  /// Show new order dialog with Accept/Reject options
-  void showNewOrderDialog(Map<String, dynamic> assignment) {
+  /// Show new order dialog with Accept/Reject options (from polling)
+  Future<void> showNewOrderDialog(Map<String, dynamic> assignment) async {
     if (!mounted) return;
 
     final auth = context.read<AuthController>();
@@ -193,7 +197,7 @@ class _HomePageState extends State<HomePage> {
 
     debugPrint('📢 SHOWING DIALOG NOW...');
 
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -310,6 +314,126 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
+  /// ✅ NEW: Show popup for orders detected in currentDelivery
+  void _showNewOrderPopup(DeliveryModel order) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        contentPadding: const EdgeInsets.all(20),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.notifications_active, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text(
+                    'NEW ORDER',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            // Order Details
+            _buildDetailRow(Icons.shopping_bag, 'Order ID', order.id),
+            const SizedBox(height: 12),
+            _buildDetailRow(Icons.store, 'Mess', order.messName ?? 'Restaurant'),
+            const SizedBox(height: 12),
+            _buildDetailRow(Icons.location_on, 'Delivery To', order.deliveryAddress ?? 'Address pending'),  // ✅ FIXED
+            const SizedBox(height: 12),
+            _buildDetailRow(Icons.person, 'Customer', order.customerName),
+            const SizedBox(height: 12),
+            _buildDetailRow(Icons.currency_rupee, 'Amount', '₹${order.amount}'),
+            if (order.hasDistanceData) ...[
+              const SizedBox(height: 12),
+              _buildDetailRow(Icons.route, 'Total Distance', order.formattedTotalDistance),
+            ],
+            const SizedBox(height: 24),
+            // Action Buttons
+            Row(
+              children: [
+                // Reject Button
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      handleRejectOrder(context, order.id);
+                    },
+                    icon: const Icon(Icons.close, size: 18),
+                    label: const Text('Reject'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red, width: 2),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Accept Button
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      Navigator.pop(ctx);
+
+                      // Accept the order
+                      await handleAcceptOrder(context, order.id);
+
+                      // Navigate to OrderTrackingScreen
+                      if (mounted) {
+                        final auth = context.read<AuthController>();
+                        final partnerId = auth.getCurrentUserId() ?? '';
+
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => OrderTrackingScreen(
+                              orderId: order.id,
+                              deliveryPartnerId: partnerId,
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.check_circle, size: 20),
+                    label: const Text('Accept Order'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
 
   /// Build detail row widget
   Widget _buildDetailRow(IconData icon, String label, String value) {
@@ -830,7 +954,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// ✅ FIXED: Handle Accept Order (from NewOrderCard)
-  void handleAcceptOrder(BuildContext context, String orderId) async {
+  Future<void> handleAcceptOrder(BuildContext context, String orderId) async {
     final deliveriesController = context.read<DeliveriesController>();
     try {
       final success = await deliveriesController.acceptOrder(orderId);
@@ -859,7 +983,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// ✅ FIXED: Handle Reject Order (from NewOrderCard)
-  void handleRejectOrder(BuildContext context, String orderId) async {
+  Future<void> handleRejectOrder(BuildContext context, String orderId) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -938,6 +1062,26 @@ class _HomePageState extends State<HomePage> {
     final List<DeliveryModel> upcoming = home.upcomingDeliveries;
     final List<DeliveryModel> newOrders = deliveriesController.newOrders;
 
+    // ✅ NEW: Show popup for new orders that haven't been accepted yet
+    if (current != null &&
+        current.status == 'accepted' &&
+        _lastShownOrderId != current.id) {
+
+      _lastShownOrderId = current.id;
+
+      // Show dialog after build completes
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showNewOrderPopup(current);
+        }
+      });
+    }
+
+    // Reset tracker when no current delivery
+    if (current == null) {
+      _lastShownOrderId = null;
+    }
+
     final bool isOnline = home.isOnline;
     final String userName = auth.user?.name ?? 'Delivery Partner';
     final now = DateTime.now();
@@ -1007,7 +1151,6 @@ class _HomePageState extends State<HomePage> {
                         // Action Icons
                         Row(
                           children: [
-                            // ❌ REMOVED: Refresh Button
                             // Chat Button
                             Container(
                               decoration: BoxDecoration(
@@ -1062,9 +1205,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-
               // ===== STATS GRID =====
-              // STATS GRID
               Transform.translate(
                 offset: const Offset(0, -60),
                 child: Padding(
@@ -1105,7 +1246,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
               ),
-
 
               // ===== MAIN CONTENT =====
               Transform.translate(

@@ -8,8 +8,15 @@ class DeliveryModel {
   final String item;
   final String address;
   final String? deliveryAddress;
+
+  // ✅ Customer Coordinates
   final double? latitude;
   final double? longitude;
+
+  // ✅ ADDED: Pickup (Mess) Coordinates
+  final double? pickupLatitude;
+  final double? pickupLongitude;
+
   final String eta;
   final String amount;
   final String? totalAmount;
@@ -21,9 +28,9 @@ class DeliveryModel {
   final String? paymentMethod;
 
   // Distance fields
-  final String distBoyToMess;    // Distance from delivery boy to mess
-  final String distMessToCust;   // Distance from mess to customer
-  final String totalDistance;    // Total distance for the delivery
+  final String distBoyToMess;
+  final String distMessToCust;
+  final String totalDistance;
 
   DeliveryModel({
     required this.id,
@@ -35,6 +42,11 @@ class DeliveryModel {
     this.deliveryAddress,
     this.latitude,
     this.longitude,
+
+    // ✅ Initialize new fields
+    this.pickupLatitude,
+    this.pickupLongitude,
+
     required this.eta,
     required this.amount,
     this.totalAmount,
@@ -63,28 +75,38 @@ class DeliveryModel {
           json['customer_address']?.toString() ??
           'Address pending',
       deliveryAddress: json['delivery_address']?.toString(),
-      latitude: double.tryParse(json['latitude']?.toString() ?? ''),
-      longitude: double.tryParse(json['longitude']?.toString() ?? ''),
+
+      // ✅ Parse Customer Coordinates
+      latitude: double.tryParse(json['delivery_latitude']?.toString() ?? json['latitude']?.toString() ?? ''),
+      longitude: double.tryParse(json['delivery_longitude']?.toString() ?? json['longitude']?.toString() ?? ''),
+
+      // ✅ Parse Pickup Coordinates
+      pickupLatitude: double.tryParse(json['pickup_latitude']?.toString() ?? ''),
+      pickupLongitude: double.tryParse(json['pickup_longitude']?.toString() ?? ''),
+
       eta: json['eta']?.toString() ?? '30 mins',
-      amount: json['total_amount']?.toString() ??
-          json['amount']?.toString() ?? '0',
+      amount: json['total_amount']?.toString() ?? json['amount']?.toString() ?? '0',
       totalAmount: json['total_amount']?.toString() ?? json['amount']?.toString(),
       time: json['order_time']?.toString() ??
           json['created_at']?.toString() ??
           json['time']?.toString() ??
           DateTime.now().toString(),
-      status: json['assignment_status']?.toString() ??
-          json['status']?.toString() ?? 'assigned',
+
+      // ✅ FIX: Read 'status' first (order status), not 'assignment_status'
+      status: json['status']?.toString() ?? 'assigned',
+
       messName: json['mess_name']?.toString(),
       messAddress: json['mess_address']?.toString(),
       messPhone: json['mess_phone']?.toString(),
       paymentMethod: json['payment_method']?.toString() ?? 'cash',
-      // Parse distance fields from API response
+
+      // Parse distance fields
       distBoyToMess: json['dist_boy_to_mess']?.toString() ?? '0.00',
       distMessToCust: json['dist_mess_to_cust']?.toString() ?? '0.00',
       totalDistance: json['total_distance']?.toString() ?? '0.00',
     );
   }
+
 
   /// ✅ Helper method to get display-friendly status for UI
   String get displayStatus {
@@ -142,6 +164,8 @@ class DeliveryModel {
       'delivery_address': deliveryAddress,
       'latitude': latitude,
       'longitude': longitude,
+      'pickup_latitude': pickupLatitude, // ✅ Added
+      'pickup_longitude': pickupLongitude, // ✅ Added
       'eta': eta,
       'amount': amount,
       'total_amount': totalAmount,
@@ -168,6 +192,8 @@ class DeliveryModel {
     String? deliveryAddress,
     double? latitude,
     double? longitude,
+    double? pickupLatitude, // ✅ Added
+    double? pickupLongitude, // ✅ Added
     String? eta,
     String? amount,
     String? totalAmount,
@@ -191,6 +217,8 @@ class DeliveryModel {
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      pickupLatitude: pickupLatitude ?? this.pickupLatitude, // ✅ Added
+      pickupLongitude: pickupLongitude ?? this.pickupLongitude, // ✅ Added
       eta: eta ?? this.eta,
       amount: amount ?? this.amount,
       totalAmount: totalAmount ?? this.totalAmount,
@@ -226,24 +254,20 @@ class DeliveryModel {
       distBoyToMessKm > 0 || distMessToCustKm > 0 || totalDistanceKm > 0;
 
   /// ✅ Calculate estimated earnings based on distance
-  /// Assuming ₹10 base + ₹8 per km
   double get estimatedEarnings {
     const baseRate = 10.0;
     const perKmRate = 8.0;
     return baseRate + (totalDistanceKm * perKmRate);
   }
 
-  /// ✅ Get formatted estimated earnings
-  String get formattedEstimatedEarnings =>
-      '₹${estimatedEarnings.toStringAsFixed(2)}';
+  String get formattedEstimatedEarnings => '₹${estimatedEarnings.toStringAsFixed(2)}';
 
-  /// ✅ Get distance breakdown as a readable string
   String get distanceBreakdown =>
       'To Mess: $formattedDistBoyToMess | Mess to Customer: $formattedDistMessToCust | Total: $formattedTotalDistance';
 
   @override
   String toString() {
-    return 'DeliveryModel(id: $id, orderId: $orderId, customer: $customerName, status: $status, totalDistance: $formattedTotalDistance)';
+    return 'DeliveryModel(id: $id, orderId: $orderId, customer: $customerName, status: $status)';
   }
 
   @override

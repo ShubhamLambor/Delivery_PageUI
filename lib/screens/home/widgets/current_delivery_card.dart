@@ -22,45 +22,72 @@ class CurrentDeliveryCard extends StatelessWidget {
     this.onCancel,
   });
 
-  // ✅ FIXED: Proper null checking before navigation
+  // ✅ PRESERVED: Dynamic Navigation Logic (Mess vs Customer)
   Future<void> _handleNavigation(BuildContext context) async {
-    // Extract coordinates with null safety
-    final double? lat = delivery.latitude;
-    final double? lng = delivery.longitude;
-    final String name = delivery.customerName;
+    double? targetLat;
+    double? targetLng;
+    String targetName;
 
-    // ✅ Validate coordinates before navigating
-    if (lat == null || lng == null) {
+    final status = delivery.status.toLowerCase().trim();
+
+    // 1️⃣ Determine Destination based on Order Status
+    final isPickupPhase = [
+      'accepted',
+      'confirmed',
+      'pending',
+      'waiting_for_order',
+      'waiting_for_pickup',
+      'ready',
+      'ready_for_pickup',
+      'at_pickup_location',
+      'reached_pickup'
+    ].contains(status);
+
+    if (isPickupPhase) {
+      // 📍 GO TO MESS
+      targetLat = delivery.pickupLatitude;
+      targetLng = delivery.pickupLongitude;
+      targetName = "Mess: ${delivery.messName ?? delivery.item}";
+    } else {
+      // 📍 GO TO CUSTOMER
+      targetLat = delivery.latitude;
+      targetLng = delivery.longitude;
+      targetName = "Customer: ${delivery.customerName}";
+    }
+
+    // 2️⃣ Validation
+    if (targetLat == null || targetLng == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Location coordinates not available. Please contact support.'),
+        SnackBar(
+          content: Text(isPickupPhase
+              ? 'Mess location not available.'
+              : 'Customer location not available.'),
           backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
 
-    // ✅ Check if coordinates are valid (not zero)
-    if (lat == 0.0 || lng == 0.0) {
+    if (targetLat == 0.0 || targetLng == 0.0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Invalid delivery location. Please update the order details.'),
+          content: Text('Invalid location coordinates. Please contact support.'),
           backgroundColor: Colors.orange,
-          duration: Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
         ),
       );
       return;
     }
 
-    // ✅ Navigate with validated coordinates
+    // 3️⃣ Navigate
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => OSMNavigationScreen(
-          destinationLat: lat,
-          destinationLng: lng,
-          destinationName: name,
+          destinationLat: targetLat!,
+          destinationLng: targetLng!,
+          destinationName: targetName,
         ),
       ),
     );
@@ -69,188 +96,270 @@ class CurrentDeliveryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 4),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20), // Matches your app's rounded look
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          /// --- Header: Order ID + Status Badge ---
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              // Order ID & Customer Name
-              Expanded(
-                child: Column(
+          // --- HEADER Section (Green Top) ---
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.green.shade50.withOpacity(0.5),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Order ${delivery.id}',
+                      'Order #${delivery.orderId}',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF2E7D32),
+                        color: Color(0xFF2E7D32), // Deep Green
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      delivery.customerName,
+                      delivery.time.split(' ').last, // Simple time display
                       style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[700],
+                        fontSize: 12,
+                        color: Colors.grey[600],
                         fontWeight: FontWeight.w500,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-
-              // Status Badge
-              _buildStatusBadge(delivery.status),
-            ],
+                _buildStatusChip(delivery.displayStatus),
+              ],
+            ),
           ),
 
-          const SizedBox(height: 12),
-          const Divider(height: 1),
-          const SizedBox(height: 12),
+          // --- BODY Section (Timeline) ---
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // 📍 PICKUP (Mess)
+                _buildLocationRow(
+                  icon: Icons.store_mall_directory,
+                  iconColor: Colors.orange,
+                  title: delivery.messName ?? delivery.item,
+                  subtitle: delivery.messAddress ?? "Mess Location",
+                  isLast: false,
+                ),
 
-          /// --- Mess/Restaurant Info ---
-          _buildInfoRow(
-            Icons.restaurant,
-            'Mess',
-            delivery.item, // This should be mess name from backend
-            Colors.orange,
+                // 📍 DROP (Customer)
+                _buildLocationRow(
+                  icon: Icons.person_pin_circle,
+                  iconColor: Colors.green,
+                  title: delivery.customerName,
+                  subtitle: delivery.address,
+                  isLast: true,
+                ),
+
+                const SizedBox(height: 16),
+                const Divider(height: 1, color: Color(0xFFEEEEEE)),
+                const SizedBox(height: 16),
+
+                // 💰 PAYMENT INFO
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Payment',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.payment,
+                              size: 16,
+                              color: Colors.grey[700],
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              delivery.paymentMethod?.toUpperCase() ?? 'CASH',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[800],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'Total Amount',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '₹${delivery.totalAmount ?? delivery.amount}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2E7D32), // Green Amount
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 20),
+
+                // --- ACTION BUTTONS ---
+                _buildActionButtons(context, delivery.status),
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
-
-          /// --- Delivery Address ---
-          _buildInfoRow(
-            Icons.location_on,
-            'Delivery Address',
-            delivery.address,
-            Colors.red,
-          ),
-          const SizedBox(height: 10),
-
-          /// --- Amount ---
-          _buildInfoRow(
-            Icons.currency_rupee,
-            'Amount',
-            '₹${delivery.amount}',
-            Colors.green,
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1),
-          const SizedBox(height: 16),
-
-          /// --- Action Buttons Based on Status ---
-          _buildActionButtons(context, delivery.status),
         ],
       ),
     );
   }
 
-  /// Build Status Badge
-  Widget _buildStatusBadge(String status) {
-    Color bgColor;
-    Color textColor;
-    String displayText;
-    IconData icon;
+  // --- WIDGET HELPERS ---
+
+  Widget _buildStatusChip(String status) {
+    Color bg;
+    Color text;
 
     switch (status.toLowerCase()) {
-      case 'accepted':
-      case 'pending':
-        bgColor = Colors.blue.shade50;
-        textColor = Colors.blue.shade700;
-        displayText = 'Accepted';
-        icon = Icons.check_circle_outline;
+      case 'new':
+      case 'assigned':
+        bg = Colors.blue.shade50;
+        text = Colors.blue.shade700;
         break;
-
-      case 'confirmed':
-        bgColor = Colors.green.shade50;
-        textColor = Colors.green.shade700;
-        displayText = 'Confirmed';
-        icon = Icons.verified_outlined;
+      case 'picked up':
+        bg = Colors.orange.shade50;
+        text = Colors.orange.shade800;
         break;
-
-      case 'waiting_for_order':
-        bgColor = Colors.amber.shade50;
-        textColor = Colors.amber.shade700;
-        displayText = 'Waiting for Order';
-        icon = Icons.hourglass_empty;
-        break;
-
-      case 'waiting_for_pickup':
-      case 'ready':
-      case 'ready_for_pickup':
-        bgColor = Colors.purple.shade50;
-        textColor = Colors.purple.shade700;
-        displayText = 'Ready for Pickup';
-        icon = Icons.shopping_bag;
-        break;
-
-      case 'picked_up':
-      case 'out_for_delivery':
-        bgColor = Colors.orange.shade50;
-        textColor = Colors.orange.shade700;
-        displayText = 'Picked Up';
-        icon = Icons.inventory_2_outlined;
-        break;
-
-      case 'in_transit':
-        bgColor = Colors.purple.shade50;
-        textColor = Colors.purple.shade700;
-        displayText = 'In Transit';
-        icon = Icons.local_shipping_outlined;
-        break;
-
       case 'delivered':
-        bgColor = Colors.green.shade50;
-        textColor = Colors.green.shade700;
-        displayText = 'Delivered';
-        icon = Icons.check_circle;
+        bg = Colors.green.shade50;
+        text = Colors.green.shade700;
         break;
-
-      default:
-        bgColor = Colors.grey.shade100;
-        textColor = Colors.grey.shade700;
-        displayText = status;
-        icon = Icons.info_outline;
+      default: // Accepted, etc.
+        bg = const Color(0xFFE8F5E9); // Green 50
+        text = const Color(0xFF2E7D32); // Green 800
     }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
       ),
+      child: Text(
+        status.toUpperCase(),
+        style: TextStyle(
+          color: text,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLocationRow({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required bool isLast,
+  }) {
+    return IntrinsicHeight(
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 16, color: textColor),
-          const SizedBox(width: 4),
-          Text(
-            displayText,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: textColor,
+          // Icon Column
+          Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 18, color: iconColor),
+              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          // Text Column
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 6), // Align with icon
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey[600],
+                      height: 1.2,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -258,265 +367,107 @@ class CurrentDeliveryCard extends StatelessWidget {
     );
   }
 
-  /// Build Info Row
-  Widget _buildInfoRow(IconData icon, String label, String value, Color color) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, size: 18, color: color),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Build Action Buttons Based on Order Status
   Widget _buildActionButtons(BuildContext context, String status) {
-    switch (status.toLowerCase()) {
-      case 'accepted':
-      case 'confirmed':
-      case 'pending':
-      case 'waiting_for_order':
-      case 'waiting_for_pickup':
-      case 'ready':
-      case 'ready_for_pickup':
-        return _buildAcceptedActions(context);
+    final s = status.toLowerCase().trim();
 
-      case 'picked_up':
-      case 'out_for_delivery':
-        return _buildPickedUpActions(context);
-
-      case 'in_transit':
-        return _buildInTransitActions(context);
-
-      default:
-        return const SizedBox.shrink();
+    // 1. MESS PHASE
+    if (['accepted', 'confirmed', 'pending', 'waiting_for_order', 'waiting_for_pickup', 'ready', 'ready_for_pickup'].contains(s)) {
+      return _buildPhaseActions(
+        context,
+        navLabel: 'Navigate to Mess',
+        navIcon: Icons.near_me,
+        navColor: const Color(0xFF1E88E5), // Blue for navigation
+        actionLabel: 'Mark Picked Up',
+        actionIcon: Icons.inventory_2,
+        actionColor: const Color(0xFFEF6C00), // Orange for action
+        onAction: onPickedUp,
+      );
     }
+
+    // 2. CUSTOMER PHASE
+    if (['picked_up', 'out_for_delivery', 'in_transit'].contains(s)) {
+      final isTransit = s == 'in_transit';
+      return _buildPhaseActions(
+        context,
+        navLabel: 'Navigate to Customer',
+        navIcon: Icons.navigation,
+        navColor: const Color(0xFF2E7D32), // Green for navigation
+        actionLabel: isTransit ? 'Mark Delivered' : 'Start Delivery',
+        actionIcon: isTransit ? Icons.check_circle : Icons.local_shipping,
+        actionColor: isTransit ? const Color(0xFF2E7D32) : const Color(0xFFEF6C00),
+        onAction: isTransit ? onDelivered : onInTransit,
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
-  /// Actions when order is "Accepted" (need to pick up)
-  Widget _buildAcceptedActions(BuildContext context) {
+  Widget _buildPhaseActions(
+      BuildContext context, {
+        required String navLabel,
+        required IconData navIcon,
+        required Color navColor,
+        required String actionLabel,
+        required IconData actionIcon,
+        required Color actionColor,
+        required VoidCallback? onAction,
+      }) {
     return Column(
       children: [
-        // Navigate + Call Row
         Row(
           children: [
-            // Navigate to Mess Button
+            // Navigate Button (Expanded)
             Expanded(
-              flex: 2,
               child: ElevatedButton.icon(
                 onPressed: () => _handleNavigation(context),
-                icon: const Icon(Icons.navigation, size: 18),
-                label: const Text('Navigate to Mess'),
+                icon: Icon(navIcon, size: 18),
+                label: Text(navLabel),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  elevation: 0,
+                  backgroundColor: navColor.withOpacity(0.1),
+                  foregroundColor: navColor,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 10),
-
-            // Call Button
+            const SizedBox(width: 12),
+            // Call Button (Square)
             Container(
-              height: 44,
-              width: 44,
               decoration: BoxDecoration(
                 color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.green.withOpacity(0.3)),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: IconButton(
                 onPressed: onCall,
-                icon: const Icon(Icons.call, color: Colors.green, size: 20),
-                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.call, color: Colors.green),
+                padding: const EdgeInsets.all(12),
+                constraints: const BoxConstraints(),
               ),
             ),
           ],
         ),
-        const SizedBox(height: 10),
-
-        // Mark Picked Up Button
+        const SizedBox(height: 12),
+        // Primary Action Button (Full Width, Solid)
         SizedBox(
           width: double.infinity,
           child: ElevatedButton.icon(
-            onPressed: onPickedUp,
-            icon: const Icon(Icons.inventory_2, size: 20),
-            label: const Text('Mark as Picked Up'),
+            onPressed: onAction,
+            icon: Icon(actionIcon, size: 20),
+            label: Text(
+              actionLabel,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
+              elevation: 4,
+              shadowColor: actionColor.withOpacity(0.4),
+              backgroundColor: actionColor,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
+              padding: const EdgeInsets.symmetric(vertical: 16),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Actions when order is "Picked Up" (on the way)
-  Widget _buildPickedUpActions(BuildContext context) {
-    return Column(
-      children: [
-        // Navigate + Call Row
-        Row(
-          children: [
-            // Navigate to Customer Button
-            Expanded(
-              flex: 2,
-              child: ElevatedButton.icon(
-                onPressed: () => _handleNavigation(context),
-                icon: const Icon(Icons.directions, size: 18),
-                label: const Text('Navigate to Customer'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-
-            // Call Button
-            Container(
-              height: 44,
-              width: 44,
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.green.withOpacity(0.3)),
-              ),
-              child: IconButton(
-                onPressed: onCall,
-                icon: const Icon(Icons.call, color: Colors.green, size: 20),
-                padding: EdgeInsets.zero,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-
-        // Mark In Transit Button
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: onInTransit,
-            icon: const Icon(Icons.local_shipping, size: 20),
-            label: const Text('Mark as In Transit'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orangeAccent,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Actions when order is "In Transit" (delivering)
-  Widget _buildInTransitActions(BuildContext context) {
-    return Column(
-      children: [
-        // Navigate + Call Row
-        Row(
-          children: [
-            // Navigate to Customer Button
-            Expanded(
-              flex: 2,
-              child: ElevatedButton.icon(
-                onPressed: () => _handleNavigation(context),
-                icon: const Icon(Icons.directions, size: 18),
-                label: const Text('Navigate to Customer'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-
-            // Call Button
-            Container(
-              height: 44,
-              width: 44,
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.green.withOpacity(0.3)),
-              ),
-              child: IconButton(
-                onPressed: onCall,
-                icon: const Icon(Icons.call, color: Colors.green, size: 20),
-                padding: EdgeInsets.zero,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-
-        // Mark Delivered Button (Primary Action)
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: onDelivered,
-            icon: const Icon(Icons.check_circle, size: 22),
-            label: const Text('Mark as Delivered'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2FA84F),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              elevation: 3,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
           ),

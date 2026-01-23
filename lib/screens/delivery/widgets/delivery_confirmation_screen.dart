@@ -69,11 +69,12 @@ class DeliveryConfirmationScreen extends StatelessWidget {
             ),
             child: Column(
               children: [
-                const Text(
-                  'You Earned',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
+                Text(
+                  '₹${controller.deliveryFee.toStringAsFixed(2)}', // ✅ Use actual delivery fee
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
                 const SizedBox(height: 8),
