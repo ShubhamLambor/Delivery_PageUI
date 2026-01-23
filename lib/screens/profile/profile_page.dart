@@ -260,18 +260,6 @@ class _ProfilePageState extends State<ProfilePage> {
           _buildDivider(),
           _buildOptionItem(
             context,
-            icon: Icons.language,
-            title: 'Language',
-            subtitle: _getCurrentLanguageName(context),
-            color: Colors.deepOrange,
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const LanguagePage()),
-            ),
-          ),
-          _buildDivider(),
-          _buildOptionItem(
-            context,
             icon: Icons.notifications,
             title: 'Notifications',
             subtitle: 'Manage alerts',
@@ -381,29 +369,5 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  String _getCurrentLanguageName(BuildContext context) {
-    final locale = context.watch<LocaleProvider>().locale;
-    switch (locale.languageCode) {
-      case 'hi':
-        return 'हिन्दी';
-      case 'mr':
-        return 'मराठी';
-      case 'gu':
-        return 'ગુજરાતી';
-      case 'ta':
-        return 'தமிழ்';
-      case 'te':
-        return 'తెలుగు';
-      case 'kn':
-        return 'ಕನ್ನಡ';
-      case 'ml':
-        return 'മലയാളം';
-      case 'bn':
-        return 'বাংলা';
-      case 'pa':
-        return 'ਪੰਜਾਬੀ';
-      default:
-        return 'English';
-    }
-  }
+
 }

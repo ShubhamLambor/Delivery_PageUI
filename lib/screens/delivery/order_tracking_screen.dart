@@ -37,12 +37,19 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     super.dispose();
   }
 
-  /// ✅ Auto-refresh order details every 10 seconds
+  /// ✅ Auto-refresh order details every 5 seconds
   void _startAutoRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      final controller = context.read<OrderTrackingController>();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      // ✅ FIX: Check if widget is still mounted
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
 
-      // ✅ Only refresh if order is not delivered
+      // ✅ FIX: Use widget's controller reference instead of context.read
+      final controller = Provider.of<OrderTrackingController>(context, listen: false);
+
+      // Only refresh if order is not delivered
       if (controller.orderStatus.toLowerCase() != 'delivered') {
         debugPrint('🔄 Auto-refreshing order details...');
         controller.loadOrderDetails(widget.orderId);
@@ -52,6 +59,7 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       }
     });
   }
+
 
   @override
   Widget build(BuildContext context) {

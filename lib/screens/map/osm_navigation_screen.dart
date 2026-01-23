@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_osm_plugin/flutter_osm_plugin.dart';
@@ -23,44 +22,36 @@ class OSMNavigationScreen extends StatefulWidget {
 
 class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     with SingleTickerProviderStateMixin {
-  // --- Controllers ---
   late MapController mapController;
   late AnimationController _pulseController;
 
-  // --- State Variables ---
   GeoPoint? _currentLocation;
   RoadInfo? _roadInfo;
   bool _isMapReady = false;
-  bool _isTracking = true; // Auto-follow user
+  bool _isTracking = true;
   bool _isLoadingRoute = false;
   double _currentSpeed = 0.0;
   double _currentHeading = 0.0;
   double? _remainingDistanceKm;
-
-  // ✅ ADDED: Grace period to prevent instant arrival on load
   bool _canTriggerArrival = false;
+  bool _hasShownArrivalDialog = false;
 
-  // --- Streams ---
   StreamSubscription<Position>? _positionStream;
 
-  // --- Constants ---
-  static const Color primaryColor = Color(0xFF2563EB); // Royal Blue
-  static const Color accentColor = Color(0xFF10B981); // Emerald Green
+  static const Color primaryColor = Color(0xFF2563EB);
+  static const Color accentColor = Color(0xFF10B981);
   static const Color darkText = Color(0xFF1F2937);
 
   @override
   void initState() {
     super.initState();
-    // Keep screen on for navigation
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
-    // Pulse animation for rider marker
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    // Initialize Map Controller
     mapController = MapController(
       initMapWithUserPosition: const UserTrackingOption(
         enableTracking: true,
@@ -68,8 +59,6 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
       ),
     );
 
-    // ✅ ADDED: Start Grace Period Timer (10 seconds)
-    // We won't check for "Arrival" until 10 seconds have passed to let GPS stabilize
     Future.delayed(const Duration(seconds: 10), () {
       if (mounted) {
         setState(() => _canTriggerArrival = true);
@@ -86,8 +75,6 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     super.dispose();
   }
 
-  // --- Logic ---
-
   Future<void> _onMapReady(bool isReady) async {
     if (!isReady) return;
 
@@ -95,29 +82,32 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
       setState(() => _isMapReady = true);
     }
 
-    // 1. Get Initial Location
     try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          debugPrint("❌ Location permission denied");
+          return;
+        }
+      }
+
       Position pos = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
+        desiredAccuracy: LocationAccuracy.high,
+      );
 
       if (!mounted) return;
 
-      _currentLocation =
-          GeoPoint(latitude: pos.latitude, longitude: pos.longitude);
+      _currentLocation = GeoPoint(latitude: pos.latitude, longitude: pos.longitude);
 
-      // 2. Add Destination Marker
       await mapController.addMarker(
-        GeoPoint(
-            latitude: widget.destinationLat, longitude: widget.destinationLng),
+        GeoPoint(latitude: widget.destinationLat, longitude: widget.destinationLng),
         markerIcon: const MarkerIcon(
           icon: Icon(Icons.location_on, color: Colors.red, size: 60),
         ),
       );
 
-      // 3. Draw Initial Route
       await _calculateRoute();
-
-      // 4. Start Live Tracking
       _startTracking();
     } catch (e) {
       debugPrint("❌ Map Init Error: $e");
@@ -131,8 +121,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     try {
       _roadInfo = await mapController.drawRoad(
         _currentLocation!,
-        GeoPoint(
-            latitude: widget.destinationLat, longitude: widget.destinationLng),
+        GeoPoint(latitude: widget.destinationLat, longitude: widget.destinationLng),
         roadType: RoadType.car,
         roadOption: const RoadOption(
           roadWidth: 10,
@@ -158,7 +147,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
   void _startTracking() {
     const settings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 5, // Update every 5 meters
+      distanceFilter: 5,
     );
 
     _positionStream = Geolocator.getPositionStream(locationSettings: settings)
@@ -169,10 +158,9 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
 
       setState(() {
         _currentLocation = newGeo;
-        _currentSpeed = (pos.speed * 3.6);
+        _currentSpeed = pos.speed * 3.6;
         _currentHeading = pos.heading;
 
-        // Calculate distance
         final distMeters = Geolocator.distanceBetween(
           pos.latitude,
           pos.longitude,
@@ -180,16 +168,12 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
           widget.destinationLng,
         );
         _remainingDistanceKm = distMeters / 1000;
-
-        // Debug Log
-        // debugPrint("📍 Dist: ${distMeters.toStringAsFixed(1)}m | Can Trigger: $_canTriggerArrival");
       });
 
-      // ✅ UPDATED: Arrival check (< 50 meters)
-      // Only trigger if grace period is over AND distance is valid
-      if (_canTriggerArrival &&
+      if (!_hasShownArrivalDialog &&
+          _canTriggerArrival &&
           _remainingDistanceKm != null &&
-          _remainingDistanceKm! < 0.05) { // 0.05 km = 50 meters
+          _remainingDistanceKm! < 0.05) {
         _showArrivalDialog();
       }
 
@@ -208,7 +192,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
   }
 
   void _showArrivalDialog() {
-    // Prevent multiple dialogs by pausing stream
+    _hasShownArrivalDialog = true;
     _positionStream?.pause();
 
     showDialog(
@@ -220,7 +204,8 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
           children: [
             Icon(Icons.check_circle, color: accentColor, size: 60),
             SizedBox(height: 10),
-            Text("You have arrived!", style: TextStyle(fontWeight: FontWeight.bold)),
+            Text("You have arrived!",
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ],
         ),
         content: Text(
@@ -234,16 +219,23 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryColor,
-                padding: const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               onPressed: () {
-                Navigator.pop(ctx); // Close dialog
-                Navigator.pop(context); // Go back to Home Screen
+                Navigator.pop(ctx);
+                Navigator.pop(context);
               },
-              child: const Text("Complete Delivery",
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              child: const Text(
+                "Complete Delivery",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           )
         ],
@@ -265,7 +257,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
                 unFollowUser: false,
               ),
               zoomOption: const ZoomOption(
-                initZoom: 18,
+                initZoom: 16,
                 minZoomLevel: 4,
                 maxZoomLevel: 19,
                 stepZoom: 1.0,
@@ -279,22 +271,25 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
                 ),
               ),
               roadConfiguration: const RoadOption(
-                roadColor: Colors.blueGrey,
+                roadColor: primaryColor,
               ),
             ),
           ),
+
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 16,
             right: 16,
             child: _buildTopCard(),
           ),
+
           Positioned(
             bottom: 0,
             left: 0,
             right: 0,
             child: _buildBottomCard(),
           ),
+
           Positioned(
             bottom: 220,
             right: 16,
@@ -341,7 +336,11 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
                           ),
                           const Text(
                             "km/h",
-                            style: TextStyle(fontSize: 10, color: Colors.grey, height: 1.0),
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.grey,
+                              height: 1.0,
+                            ),
                           )
                         ],
                       ),
@@ -350,6 +349,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
               ],
             ),
           ),
+
           if (_isLoadingRoute || !_isMapReady)
             Container(
               color: Colors.white.withOpacity(0.8),
@@ -359,7 +359,13 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
                   children: [
                     CircularProgressIndicator(color: primaryColor),
                     SizedBox(height: 16),
-                    Text("Loading Map...", style: TextStyle(color: darkText, fontWeight: FontWeight.bold)),
+                    Text(
+                      "Loading Map...",
+                      style: TextStyle(
+                        color: darkText,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -371,7 +377,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
 
   Widget _buildTopCard() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -484,8 +490,10 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
             height: 50,
             child: ElevatedButton.icon(
               icon: const Icon(Icons.check_circle_outline),
-              label: const Text("Arrived at Location",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              label: const Text(
+                "Arrived at Location",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: accentColor,
                 foregroundColor: Colors.white,
@@ -494,7 +502,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
                 ),
                 elevation: 2,
               ),
-              onPressed: _showArrivalDialog,
+              onPressed: _hasShownArrivalDialog ? null : _showArrivalDialog,
             ),
           ),
         ],
