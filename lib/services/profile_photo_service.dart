@@ -1,14 +1,16 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path/path.dart' as path;
-import 'package:image/image.dart' as img;
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class ProfilePhotoService {
-  static const String _photoPathKey = 'delivery_boy_profile_photo_path';
+  static const String _photoUrlKey = 'delivery_boy_profile_photo_url';
   static const String _photoTimestampKey = 'profile_photo_timestamp';
+
+  // ✅ Replace with your actual API endpoint
+  static const String uploadEndpoint = 'https://yourapi.com/api/upload-profile-photo';
 
   final ImagePicker _picker = ImagePicker();
 
@@ -23,7 +25,7 @@ class ProfilePhotoService {
       );
 
       if (image == null) return null;
-      return await _savePhoto(image);
+      return await _uploadPhoto(image);
     } catch (e) {
       debugPrint('Error picking from gallery: $e');
       return null;
@@ -42,100 +44,86 @@ class ProfilePhotoService {
       );
 
       if (image == null) return null;
-      return await _savePhoto(image);
+      return await _uploadPhoto(image);
     } catch (e) {
       debugPrint('Error picking from camera: $e');
       return null;
     }
   }
 
-  /// Save photo to local storage
-  Future<String?> _savePhoto(XFile image) async {
+  /// ✅ Upload photo to server and return URL
+  Future<String?> _uploadPhoto(XFile image) async {
     try {
-      // Delete old photo if exists
-      await deleteProfilePhoto();
+      debugPrint('📤 Uploading photo to server...');
 
-      // Get app directory
-      final Directory appDir = await getApplicationDocumentsDirectory();
-      final String fileName = 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final String localPath = path.join(appDir.path, 'profile_photos', fileName);
+      // Get auth token
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken') ?? '';
 
-      // Create directory if doesn't exist
-      final Directory profileDir = Directory(path.join(appDir.path, 'profile_photos'));
-      if (!await profileDir.exists()) {
-        await profileDir.create(recursive: true);
-      }
+      // Create multipart request
+      var request = http.MultipartRequest('POST', Uri.parse(uploadEndpoint));
 
-      // Compress and save image
-      final File imageFile = File(image.path);
-      final img.Image? originalImage = img.decodeImage(await imageFile.readAsBytes());
+      // Add authorization header
+      request.headers['Authorization'] = 'Bearer $token';
 
-      if (originalImage != null) {
-        // Resize if needed
-        final img.Image resized = img.copyResize(
-          originalImage,
-          width: originalImage.width > 800 ? 800 : originalImage.width,
-        );
+      // Add the image file
+      var multipartFile = await http.MultipartFile.fromPath(
+        'profile_photo', // Field name expected by your backend
+        image.path,
+        filename: 'profile_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      );
+      request.files.add(multipartFile);
 
-        // Save compressed image
-        final File compressedFile = File(localPath);
-        await compressedFile.writeAsBytes(img.encodeJpg(resized, quality: 85));
+      // Send request
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
 
-        // Save path and timestamp to SharedPreferences
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_photoPathKey, localPath);
-        await prefs.setInt(_photoTimestampKey, DateTime.now().millisecondsSinceEpoch);
+      debugPrint('Response status: ${response.statusCode}');
+      debugPrint('Response body: ${response.body}');
 
-        debugPrint('✅ Profile photo saved: $localPath');
-        return localPath;
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final photoUrl = responseData['photo_url'] ?? responseData['url'];
+
+        if (photoUrl != null) {
+          // Save URL to SharedPreferences
+          await prefs.setString(_photoUrlKey, photoUrl);
+          await prefs.setInt(_photoTimestampKey, DateTime.now().millisecondsSinceEpoch);
+
+          debugPrint('✅ Photo uploaded successfully: $photoUrl');
+          return photoUrl;
+        }
+      } else {
+        debugPrint('❌ Upload failed: ${response.statusCode}');
       }
 
       return null;
     } catch (e) {
-      debugPrint('❌ Error saving photo: $e');
+      debugPrint('❌ Error uploading photo: $e');
       return null;
     }
   }
 
-  /// Get profile photo path
-  Future<String?> getProfilePhotoPath() async {
+  /// ✅ Get profile photo URL from SharedPreferences
+  Future<String?> getProfilePhotoUrl() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final String? photoPath = prefs.getString(_photoPathKey);
-
-      // Check if file exists
-      if (photoPath != null && await File(photoPath).exists()) {
-        return photoPath;
-      } else if (photoPath != null) {
-        // Path exists but file doesn't - clean up
-        await prefs.remove(_photoPathKey);
-        await prefs.remove(_photoTimestampKey);
-      }
-
-      return null;
+      final String? photoUrl = prefs.getString(_photoUrlKey);
+      return photoUrl;
     } catch (e) {
-      debugPrint('Error getting photo path: $e');
+      debugPrint('Error getting photo URL: $e');
       return null;
     }
   }
 
-  /// Delete profile photo
+  /// ✅ Delete profile photo (remove from preferences)
   Future<bool> deleteProfilePhoto() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final String? photoPath = prefs.getString(_photoPathKey);
+      await prefs.remove(_photoUrlKey);
+      await prefs.remove(_photoTimestampKey);
 
-      if (photoPath != null) {
-        final File photoFile = File(photoPath);
-        if (await photoFile.exists()) {
-          await photoFile.delete();
-          debugPrint('🗑️ Deleted old profile photo');
-        }
-
-        await prefs.remove(_photoPathKey);
-        await prefs.remove(_photoTimestampKey);
-      }
-
+      debugPrint('🗑️ Profile photo URL removed');
       return true;
     } catch (e) {
       debugPrint('Error deleting photo: $e');

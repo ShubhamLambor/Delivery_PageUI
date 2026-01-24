@@ -33,7 +33,6 @@ class DeliveryService {
         encoding: Encoding.getByName('utf-8'),
         body: {
           'action': action,
-          // use the new param names that PHP expects primarily
           'orderid': orderId,
           'deliverypartnerid': deliveryPartnerId,
           if (reason != null) 'reason': reason,
@@ -617,6 +616,100 @@ class DeliveryService {
     }
   }
 
+  /// ✅ NEW: Get delivery history with filters (date range and status)
+  static Future<Map<String, dynamic>> getDeliveryHistory({
+    required String deliveryPartnerId,
+    DateTime? startDate,
+    DateTime? endDate,
+    String status = 'all',
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    try {
+      debugPrint('📋 Fetching delivery history with filters...');
+      debugPrint('   Partner: $deliveryPartnerId');
+      if (startDate != null || endDate != null) {
+        debugPrint('   Date: ${startDate?.toString().split(' ')[0] ?? 'All'} - ${endDate?.toString().split(' ')[0] ?? 'All'}');
+      }
+      debugPrint('   Status: $status');
+
+      final Map<String, String> body = {
+        'delivery_partner_id': deliveryPartnerId,
+        'status': status,
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      };
+
+      if (startDate != null) {
+        body['start_date'] = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+      }
+      if (endDate != null) {
+        body['end_date'] = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+      }
+
+      final response = await http
+          .post(
+        Uri.parse('$baseUrl/delivery/get_delivery_history.php'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        encoding: Encoding.getByName('utf-8'),
+        body: body,
+      )
+          .timeout(const Duration(seconds: 15));
+
+      debugPrint('📥 Delivery History Response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        try {
+          final jsonData = jsonDecode(response.body);
+
+          if (jsonData['success'] == true) {
+            debugPrint('✅ Fetched ${jsonData['count']} deliveries from history');
+            return {
+              'success': true,
+              'deliveries': jsonData['deliveries'] ?? [],
+              'count': jsonData['count'] ?? 0,
+              'total_count': jsonData['total_count'] ?? 0,
+              'has_more': jsonData['has_more'] ?? false,
+            };
+          } else {
+            return {
+              'success': false,
+              'message': jsonData['message'] ?? 'No delivery history',
+              'deliveries': [],
+              'count': 0,
+            };
+          }
+        } catch (e) {
+          debugPrint('⚠️ JSON Parse Error: $e');
+          return {
+            'success': false,
+            'message': 'Invalid response',
+            'deliveries': [],
+            'count': 0,
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': 'Server error: ${response.statusCode}',
+          'deliveries': [],
+          'count': 0,
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Get Delivery History Error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to fetch delivery history',
+        'deliveries': [],
+        'count': 0,
+      };
+    }
+  }
+
   /// Get delivery partner stats
   static Future<Map<String, dynamic>> getPartnerStats({
     required String deliveryPartnerId,
@@ -633,7 +726,6 @@ class DeliveryService {
         },
         encoding: Encoding.getByName('utf-8'),
         body: {
-          // must match PHP: $_POST['deliverypartnerid']
           'deliverypartnerid': deliveryPartnerId,
         },
       )
@@ -650,7 +742,6 @@ class DeliveryService {
             return {
               'success': true,
               'stats': jsonData['stats'] ?? {},
-              // PHP returns 'totaldeliveries' & 'totalearnings'
               'total_deliveries': jsonData['totaldeliveries'] ?? 0,
               'total_earnings': jsonData['totalearnings'] ?? 0.0,
               'rating': jsonData['rating'] ?? 0.0,

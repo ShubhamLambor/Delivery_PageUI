@@ -6,276 +6,429 @@ import 'package:provider/provider.dart';
 import 'deliveries_controller.dart';
 import '../../models/delivery_model.dart';
 
-class DeliveriesPage extends StatelessWidget {
+class DeliveriesPage extends StatefulWidget {
   const DeliveriesPage({super.key});
+
+  @override
+  State<DeliveriesPage> createState() => _DeliveriesPageState();
+}
+
+class _DeliveriesPageState extends State<DeliveriesPage> {
+  bool isLoadingHistory = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Load initial data
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadAllDeliveries();
+    });
+  }
+
+  Future<void> _loadAllDeliveries() async {
+    final controller = context.read<DeliveriesController>();
+    setState(() => isLoadingHistory = true);
+
+    try {
+      await controller.fetchDeliveries();
+    } finally {
+      if (mounted) {
+        setState(() => isLoadingHistory = false);
+      }
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    await _loadAllDeliveries();
+  }
 
   @override
   Widget build(BuildContext context) {
     final controller = context.watch<DeliveriesController>();
     final deliveries = controller.filteredDeliveries;
 
+    // Calculate summary stats based on filtered deliveries
+    final totalEarnings = deliveries
+        .where((d) => d.status.toLowerCase() == 'delivered')
+        .fold(0.0, (sum, d) {
+      final amount = double.tryParse(d.amount ?? '0') ?? 0.0;
+      return sum + amount;
+    });
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      body: CustomScrollView(
-        slivers: [
-          // 1. Header
-          SliverToBoxAdapter(
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+      body: RefreshIndicator(
+        onRefresh: _handleRefresh,
+        child: CustomScrollView(
+          slivers: [
+            // 1. Header with Stats
+            SliverToBoxAdapter(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(30),
+                    bottomRight: Radius.circular(30),
+                  ),
                 ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Deliveries',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {},
-                        icon: const Icon(Icons.search, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  Container(
-                    padding:
-                    const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(16),
-                      border:
-                      Border.all(color: Colors.white.withOpacity(0.2)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _headerStatItem(
-                            context, '${controller.totalCount}', 'Total'),
-                        _verticalDivider(),
-                        _headerStatItem(
-                            context, '${controller.completedCount}', 'Done'),
-                        _verticalDivider(),
-                        _headerStatItem(
-                            context, '${controller.pendingCount}', 'Pending'),
-                        _verticalDivider(),
-                        _headerStatItem(
-                            context, '${controller.cancelledCount}', 'Failed'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 2. Filters + sort
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Column(
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    clipBehavior: Clip.none,
-                    child: Row(
-                      children: [
-                        _chip(context, 'All'),
-                        const SizedBox(width: 8),
-                        _chip(context, 'Pending'),
-                        const SizedBox(width: 8),
-                        _chip(context, 'Completed'),
-                        const SizedBox(width: 8),
-                        _chip(context, 'Cancelled'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      // Filter Date button
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final now = DateTime.now();
-                            final controller =
-                            context.read<DeliveriesController>();
-
-                            final picked = await showDateRangePicker(
-                              context: context,
-                              firstDate: DateTime(now.year - 1),
-                              lastDate: DateTime(now.year + 1),
-                              initialDateRange: controller.dateRange ??
-                                  DateTimeRange(
-                                    start:
-                                    now.subtract(const Duration(days: 7)),
-                                    end: now,
-                                  ),
-                            );
-                            // picked can be null => clear filter
-                            controller.setDateRange(picked);
-                          },
-                          icon:
-                          const Icon(Icons.filter_list, size: 18),
-                          label: Text(
-                            controller.dateRange == null
-                                ? 'Filter Date'
-                                : '${controller.dateRange!.start.day}/${controller.dateRange!.start.month}'
-                                ' - ${controller.dateRange!.end.day}/${controller.dateRange!.end.month}',
+                        const Text(
+                          'Deliveries',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
                           ),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.grey[700],
-                            side: BorderSide(color: Colors.grey.shade300),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        ),
+                        // ✅ Show loading indicator when fetching history
+                        if (isLoadingHistory)
+                          const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(Colors.white),
                             ),
+                          )
+                        else
+                          IconButton(
+                            onPressed: _handleRefresh,
+                            icon: const Icon(Icons.refresh, color: Colors.white),
+                            tooltip: 'Refresh',
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Sort By button
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final controller =
-                            context.read<DeliveriesController>();
-                            const options = ['Newest', 'Oldest', 'Amount'];
+                      ],
+                    ),
+                    const SizedBox(height: 20),
 
-                            final selected =
-                            await showModalBottomSheet<String>(
-                              context: context,
-                              shape: const RoundedRectangleBorder(
-                                borderRadius: BorderRadius.vertical(
-                                  top: Radius.circular(20),
-                                ),
+                    // Stats Container
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _headerStatItem(
+                              context, '${controller.totalCount}', 'Total'),
+                          _verticalDivider(),
+                          _headerStatItem(
+                              context, '${controller.completedCount}', 'Done'),
+                          _verticalDivider(),
+                          _headerStatItem(
+                              context, '${controller.pendingCount}', 'Pending'),
+                          _verticalDivider(),
+                          _headerStatItem(
+                              context, '${controller.cancelledCount}', 'Failed'),
+                        ],
+                      ),
+                    ),
+
+                    // ✅ NEW: Earnings Display
+                    if (totalEarnings > 0) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.currency_rupee, color: Colors.white, size: 20),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Total Earnings: ₹${totalEarnings.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
                               ),
-                              builder: (context) {
-                                return SafeArea(
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const SizedBox(height: 12),
-                                      const Text(
-                                        'Sort by',
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      ...options.map(
-                                            (o) => ListTile(
-                                          title: Text(o),
-                                          trailing:
-                                          controller.sortBy == o
-                                              ? const Icon(
-                                            Icons.check,
-                                            color: Colors.green,
-                                          )
-                                              : null,
-                                          onTap: () =>
-                                              Navigator.pop(context, o),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                    ],
-                                  ),
-                                );
-                              },
-                            );
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
 
-                            if (selected != null) {
-                              controller.setSortBy(selected);
-                            }
-                          },
-                          icon: const Icon(Icons.sort, size: 18),
-                          label: Text('Sort: ${controller.sortBy}'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.grey[700],
-                            side: BorderSide(color: Colors.grey.shade300),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+            // 2. Filters + Sort
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Status Filter Chips
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      clipBehavior: Clip.none,
+                      child: Row(
+                        children: [
+                          _chip(context, 'All'),
+                          const SizedBox(width: 8),
+                          _chip(context, 'Pending'),
+                          const SizedBox(width: 8),
+                          _chip(context, 'Completed'),
+                          const SizedBox(width: 8),
+                          _chip(context, 'Cancelled'),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Date and Sort Filters
+                    Row(
+                      children: [
+                        // Filter Date button
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final now = DateTime.now();
+                              final controller = context.read<DeliveriesController>();
+
+                              final picked = await showDateRangePicker(
+                                context: context,
+                                firstDate: DateTime(now.year - 1),
+                                lastDate: now,
+                                initialDateRange: controller.dateRange,
+                                builder: (context, child) {
+                                  return Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: ColorScheme.light(
+                                        primary: Colors.green,
+                                        onPrimary: Colors.white,
+                                      ),
+                                    ),
+                                    child: child!,
+                                  );
+                                },
+                              );
+
+                              controller.setDateRange(picked);
+
+                              // ✅ Reload with date filter
+                              if (picked != null) {
+                                setState(() => isLoadingHistory = true);
+                                await controller.fetchOrderHistory(
+                                  startDate: picked.start,
+                                  endDate: picked.end,
+                                );
+                                if (mounted) {
+                                  setState(() => isLoadingHistory = false);
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.filter_list, size: 18),
+                            label: Text(
+                              controller.dateRange == null
+                                  ? 'Filter Date'
+                                  : '${controller.dateRange!.start.day}/${controller.dateRange!.start.month}'
+                                  ' - ${controller.dateRange!.end.day}/${controller.dateRange!.end.month}',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.grey[700],
+                              side: BorderSide(color: Colors.grey.shade300),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
+                        ),
+
+                        // ✅ Clear Date Filter Button
+                        if (controller.dateRange != null) ...[
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: () async {
+                              final controller = context.read<DeliveriesController>();
+                              controller.setDateRange(null);
+                              setState(() => isLoadingHistory = true);
+                              await controller.fetchDeliveries();
+                              if (mounted) {
+                                setState(() => isLoadingHistory = false);
+                              }
+                            },
+                            icon: const Icon(Icons.clear, size: 20),
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.red.shade50,
+                              foregroundColor: Colors.red,
+                            ),
+                            tooltip: 'Clear date filter',
+                          ),
+                        ],
+
+                        const SizedBox(width: 8),
+
+                        // Sort By button
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final controller = context.read<DeliveriesController>();
+                              const options = ['Newest', 'Oldest', 'Amount'];
+
+                              final selected = await showModalBottomSheet<String>(
+                                context: context,
+                                shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.vertical(
+                                    top: Radius.circular(20),
+                                  ),
+                                ),
+                                builder: (context) {
+                                  return SafeArea(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const SizedBox(height: 12),
+                                        const Text(
+                                          'Sort by',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        ...options.map(
+                                              (o) => ListTile(
+                                            title: Text(o),
+                                            trailing: controller.sortBy == o
+                                                ? const Icon(
+                                              Icons.check,
+                                              color: Colors.green,
+                                            )
+                                                : null,
+                                            onTap: () => Navigator.pop(context, o),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              );
+
+                              if (selected != null) {
+                                controller.setSortBy(selected);
+                              }
+                            },
+                            icon: const Icon(Icons.sort, size: 18),
+                            label: Text('Sort: ${controller.sortBy}', style: const TextStyle(fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.grey[700],
+                              side: BorderSide(color: Colors.grey.shade300),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // ✅ Results count
+                    const SizedBox(height: 12),
+                    Text(
+                      'Showing ${deliveries.length} ${deliveries.length == 1 ? 'delivery' : 'deliveries'}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            ),
+
+            // 3. List
+            if (isLoadingHistory)
+              const SliverFillRemaining(
+                child: Center(
+                  child: CircularProgressIndicator(color: Colors.green),
+                ),
+              )
+            else if (deliveries.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[100],
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.inbox,
+                          size: 48,
+                          color: Colors.grey[400],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No deliveries found',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Try adjusting your filters',
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 13,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. List
-          deliveries.isEmpty
-              ? SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.inbox,
-                      size: 48,
-                      color: Colors.grey[400],
-                    ),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                      final d = deliveries[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildDeliveryCard(context, d),
+                      );
+                    },
+                    childCount: deliveries.length,
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No deliveries found',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          )
-              : SliverPadding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  final d = deliveries[index];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _buildDeliveryCard(context, d),
-                  );
-                },
-                childCount: deliveries.length,
-              ),
-            ),
-          ),
 
-          const SliverToBoxAdapter(child: SizedBox(height: 20)),
-        ],
+            const SliverToBoxAdapter(child: SizedBox(height: 80)),
+          ],
+        ),
       ),
     );
   }
@@ -374,7 +527,10 @@ Widget _buildDeliveryCard(BuildContext context, DeliveryModel delivery) {
           showModalBottomSheet(
             context: context,
             backgroundColor: Colors.transparent,
-            builder: (_) => _DeliveryActionsSheet(deliveryId: delivery.id),
+            builder: (_) => _DeliveryActionsSheet(
+              deliveryId: delivery.id,
+              delivery: delivery,
+            ),
           );
         },
         child: Padding(
@@ -422,10 +578,10 @@ Widget _buildDeliveryCard(BuildContext context, DeliveryModel delivery) {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 20,
-                    backgroundColor: Colors.grey,
-                    child: Icon(Icons.person, color: Colors.white),
+                    backgroundColor: Colors.green.shade100,
+                    child: Icon(Icons.person, color: Colors.green.shade700, size: 20),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -461,7 +617,7 @@ Widget _buildDeliveryCard(BuildContext context, DeliveryModel delivery) {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Order #${delivery.id.length >= 6 ? delivery.id.substring(0, 6) : delivery.id}',
+                    'Order #${delivery.id.length >= 8 ? delivery.id.substring(0, 8) : delivery.id}',
                     style: TextStyle(
                       color: Colors.grey[500],
                       fontSize: 12,
@@ -469,11 +625,10 @@ Widget _buildDeliveryCard(BuildContext context, DeliveryModel delivery) {
                   ),
                   Row(
                     children: [
-                      Icon(Icons.access_time,
-                          size: 14, color: Colors.grey[600]),
+                      Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
                       const SizedBox(width: 4),
                       Text(
-                        delivery.time,
+                        delivery.time ?? 'N/A',
                         style: TextStyle(
                           color: Colors.grey[600],
                           fontSize: 12,
@@ -494,10 +649,14 @@ Widget _buildDeliveryCard(BuildContext context, DeliveryModel delivery) {
 Color _getStatusColor(String status) {
   switch (status.toLowerCase()) {
     case 'completed':
+    case 'delivered':
       return Colors.green;
     case 'cancelled':
+    case 'rejected':
       return Colors.red;
     case 'pending':
+    case 'out_for_delivery':
+    case 'in_transit':
       return Colors.orange;
     default:
       return Colors.blue;
@@ -507,8 +666,10 @@ Color _getStatusColor(String status) {
 IconData _getStatusIcon(String status) {
   switch (status.toLowerCase()) {
     case 'completed':
+    case 'delivered':
       return Icons.check_circle;
     case 'cancelled':
+    case 'rejected':
       return Icons.cancel;
     default:
       return Icons.access_time;
@@ -517,11 +678,20 @@ IconData _getStatusIcon(String status) {
 
 class _DeliveryActionsSheet extends StatelessWidget {
   final String deliveryId;
-  const _DeliveryActionsSheet({required this.deliveryId});
+  final DeliveryModel delivery;
+
+  const _DeliveryActionsSheet({
+    required this.deliveryId,
+    required this.delivery,
+  });
 
   @override
   Widget build(BuildContext context) {
     final controller = context.read<DeliveriesController>();
+    final isCompleted = delivery.status.toLowerCase() == 'completed' ||
+        delivery.status.toLowerCase() == 'delivered';
+    final isCancelled = delivery.status.toLowerCase() == 'cancelled' ||
+        delivery.status.toLowerCase() == 'rejected';
 
     return Container(
       decoration: const BoxDecoration(
@@ -542,41 +712,85 @@ class _DeliveryActionsSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            const Text(
-              'Update Status',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+
+            // Order Info
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                children: [
+                  Text(
+                    'Order #${deliveryId.substring(0, 8)}',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    delivery.customerName,
+                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  ),
+                  Text(
+                    '₹${delivery.amount}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange,
+                    ),
+                  ),
+                ],
+              ),
             ),
+
             const SizedBox(height: 20),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
-                  shape: BoxShape.circle,
+            const Divider(height: 1),
+
+            // Actions (only show if not completed/cancelled)
+            if (!isCompleted && !isCancelled) ...[
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.check, color: Colors.green),
                 ),
-                child: const Icon(Icons.check, color: Colors.green),
+                title: const Text('Mark as Completed'),
+                onTap: () {
+                  controller.markCompleted(deliveryId);
+                  Navigator.pop(context);
+                },
               ),
-              title: const Text('Mark as Completed'),
-              onTap: () {
-                controller.markCompleted(deliveryId);
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  shape: BoxShape.circle,
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.red),
                 ),
-                child: const Icon(Icons.close, color: Colors.red),
+                title: const Text('Mark as Cancelled'),
+                onTap: () {
+                  controller.markCancelled(deliveryId);
+                  Navigator.pop(context);
+                },
               ),
-              title: const Text('Mark as Cancelled'),
-              onTap: () {
-                controller.markCancelled(deliveryId);
-                Navigator.pop(context);
-              },
-            ),
+            ] else ...[
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  'This delivery is already ${delivery.status.toLowerCase()}',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 14,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+
             const SizedBox(height: 20),
           ],
         ),

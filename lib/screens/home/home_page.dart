@@ -1,6 +1,7 @@
 // lib/screens/home/home_page.dart
 
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
@@ -316,120 +317,42 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// ✅ NEW: Show popup for orders detected in currentDelivery
+  /// ✅ NEW: Modern Bottom Sheet (No Timeout)
   void _showNewOrderPopup(DeliveryModel order) {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        contentPadding: const EdgeInsets.all(20),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.orange,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.notifications_active, color: Colors.white),
-                  SizedBox(width: 8),
-                  Text(
-                    'NEW ORDER',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Order Details
-            _buildDetailRow(Icons.shopping_bag, 'Order ID', order.id),
-            const SizedBox(height: 12),
-            _buildDetailRow(Icons.store, 'Mess', order.messName ?? 'Restaurant'),
-            const SizedBox(height: 12),
-            _buildDetailRow(Icons.location_on, 'Delivery To', order.deliveryAddress ?? 'Address pending'),  // ✅ FIXED
-            const SizedBox(height: 12),
-            _buildDetailRow(Icons.person, 'Customer', order.customerName),
-            const SizedBox(height: 12),
-            _buildDetailRow(Icons.currency_rupee, 'Amount', '₹${order.amount}'),
-            if (order.hasDistanceData) ...[
-              const SizedBox(height: 12),
-              _buildDetailRow(Icons.route, 'Total Distance', order.formattedTotalDistance),
-            ],
-            const SizedBox(height: 24),
-            // Action Buttons
-            Row(
-              children: [
-                // Reject Button
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      handleRejectOrder(context, order.id);
-                    },
-                    icon: const Icon(Icons.close, size: 18),
-                    label: const Text('Reject'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red, width: 2),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
+      isScrollControlled: true,
+      isDismissible: false, // User must click Accept or Reject to close
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => NewOrderSheet(
+        order: order,
+        onAccept: () async {
+          Navigator.pop(ctx); // Close sheet
+
+          // Call existing accept logic
+          await handleAcceptOrder(context, order.id);
+
+          // Navigate to tracking
+          if (mounted) {
+            final auth = context.read<AuthController>();
+            final partnerId = auth.getCurrentUserId() ?? '';
+
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OrderTrackingScreen(
+                  orderId: order.id,
+                  deliveryPartnerId: partnerId,
                 ),
-                const SizedBox(width: 12),
-                // Accept Button
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      Navigator.pop(ctx);
-
-                      // Accept the order
-                      await handleAcceptOrder(context, order.id);
-
-                      // Navigate to OrderTrackingScreen
-                      if (mounted) {
-                        final auth = context.read<AuthController>();
-                        final partnerId = auth.getCurrentUserId() ?? '';
-
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => OrderTrackingScreen(
-                              orderId: order.id,
-                              deliveryPartnerId: partnerId,
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.check_circle, size: 20),
-                    label: const Text('Accept Order'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            );
+          }
+        },
+        onReject: () {
+          Navigator.pop(ctx);
+          handleRejectOrder(context, order.id);
+        },
       ),
     );
   }
@@ -1846,6 +1769,408 @@ class _SwipeToggleButtonState extends State<_SwipeToggleButton> {
           ],
         ),
       ),
+    );
+  }
+}
+// ---------------------------------------------------------
+// 🛠️ WIDGET: Modern New Order Bottom Sheet (No Timer)
+// ---------------------------------------------------------
+class NewOrderSheet extends StatefulWidget {
+  final DeliveryModel order;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  const NewOrderSheet({
+    super.key,
+    required this.order,
+    required this.onAccept,
+    required this.onReject,
+  });
+
+  @override
+  State<NewOrderSheet> createState() => _NewOrderSheetState();
+}
+
+class _NewOrderSheetState extends State<NewOrderSheet>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.70,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          boxShadow: [BoxShadow(blurRadius: 20, color: Colors.black26)],
+        ),
+        child: Column(
+          children: [
+            // --- HEADER (No Timer) ---
+            _buildHeader(),
+
+            // --- SCROLLABLE CONTENT ---
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 10),
+
+                    // 💰 Earnings
+                    Text(
+                      'ESTIMATED EARNINGS',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[500],
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '₹${widget.order.amount}',
+                      style: const TextStyle(
+                        fontSize: 42,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF2E7D32),
+                      ),
+                    ),
+
+                    const SizedBox(height: 30),
+
+                    // 📍 Timeline View
+                    _buildTimelineRow(
+                      icon: Icons.storefront,
+                      color: Colors.orange,
+                      title: widget.order.messName ?? 'Restaurant',
+                      subtitle: 'Pickup Location',
+                    ),
+                    _buildConnector(),
+                    _buildTimelineRow(
+                      icon: Icons.person_pin_circle,
+                      color: Colors.black,
+                      title: widget.order.customerName,
+                      subtitle: widget.order.deliveryAddress ?? widget.order.address,
+                    ),
+
+                    const Spacer(),
+
+                    // Distance Badge
+                    if (widget.order.hasDistanceData)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.directions_bike, size: 16, color: Colors.blue),
+                            const SizedBox(width: 8),
+                            Text(
+                              widget.order.formattedTotalDistance,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    const Spacer(),
+                  ],
+                ),
+              ),
+            ),
+
+            // --- BOTTOM ACTION AREA ---
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 30),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    offset: const Offset(0, -5),
+                    blurRadius: 10,
+                  )
+                ],
+              ),
+              child: Column(
+                children: [
+                  // 🟢 SLIDER
+                  SlideToAcceptButton(onAccept: widget.onAccept),
+
+                  const SizedBox(height: 16),
+
+                  // ❌ REJECT
+                  TextButton(
+                    onPressed: widget.onReject,
+                    child: Text(
+                      'Reject Order',
+                      style: TextStyle(
+                        color: Colors.grey[600],
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24, bottom: 10),
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Pulsing Icon
+            AnimatedBuilder(
+              animation: _pulseController,
+              builder: (context, child) {
+                return Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.orange.withOpacity(0.5 * _pulseController.value),
+                        blurRadius: 10 * _pulseController.value,
+                        spreadRadius: 2 * _pulseController.value,
+                      )
+                    ],
+                  ),
+                  child: child,
+                );
+              },
+              child: const Icon(Icons.notifications_active, color: Colors.orange, size: 28),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'NEW REQUEST',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ... (Keep _buildTimelineRow and _buildConnector exactly the same as before)
+  Widget _buildTimelineRow({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+          ],
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                  height: 1.3,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConnector() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 22),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Container(
+          height: 30,
+          width: 2,
+          color: Colors.grey[300],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------
+// 🟢 WIDGET: Custom Slide to Accept Button
+// ---------------------------------------------------------
+class SlideToAcceptButton extends StatefulWidget {
+  final VoidCallback onAccept;
+  const SlideToAcceptButton({super.key, required this.onAccept});
+
+  @override
+  State<SlideToAcceptButton> createState() => _SlideToAcceptButtonState();
+}
+
+class _SlideToAcceptButtonState extends State<SlideToAcceptButton> {
+  double _position = 0.0;
+  bool _submitted = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final maxDrag = maxWidth - 60; // 60 is height of thumb
+
+        return Container(
+          height: 64,
+          width: maxWidth,
+          decoration: BoxDecoration(
+            color: _submitted ? Colors.green : Colors.grey[200],
+            borderRadius: BorderRadius.circular(32),
+          ),
+          child: Stack(
+            children: [
+              // Background Text
+              Center(
+                child: Opacity(
+                  opacity: _submitted ? 0 : (1 - (_position / maxDrag)).clamp(0.0, 1.0),
+                  child: const Text(
+                    'Slide to Accept Order  >>>',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
+
+              // Success Text
+              if (_submitted)
+                const Center(
+                  child: Text(
+                    'ACCEPTED!',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ),
+
+              // Draggable Thumb
+              AnimatedPositioned(
+                duration: Duration(milliseconds: _submitted ? 200 : 0),
+                curve: Curves.easeOut,
+                left: _submitted ? maxWidth - 60 : _position, // Go to end on success
+                child: GestureDetector(
+                  onHorizontalDragUpdate: (details) {
+                    if (_submitted) return;
+                    setState(() {
+                      _position = (_position + details.delta.dx).clamp(0.0, maxDrag);
+                    });
+                  },
+                  onHorizontalDragEnd: (details) {
+                    if (_submitted) return;
+                    if (_position > maxDrag * 0.75) {
+                      // Threshold passed (75%) - Trigger Accept
+                      setState(() {
+                        _submitted = true;
+                        _position = maxDrag;
+                      });
+                      widget.onAccept();
+                    } else {
+                      // Snap back if not dragged far enough
+                      setState(() {
+                        _position = 0.0;
+                      });
+                    }
+                  },
+                  child: Container(
+                    height: 56,
+                    width: 56,
+                    margin: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: _submitted ? Colors.white : Colors.green,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.green.withOpacity(0.4),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _submitted ? Icons.check : Icons.chevron_right,
+                      color: _submitted ? Colors.green : Colors.white,
+                      size: 30,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

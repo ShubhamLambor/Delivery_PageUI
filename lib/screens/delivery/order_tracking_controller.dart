@@ -30,7 +30,7 @@ class OrderTrackingController extends ChangeNotifier {
   String messAddress = '';
   String messPhone = '';
   double orderAmount = 0.0;
-  double deliveryFee = 0.0; // ✅ Added for earnings display
+  double deliveryFee = 0.0;
   String paymentMethod = '';
   List<Map<String, dynamic>> items = [];
 
@@ -45,6 +45,42 @@ class OrderTrackingController extends ChangeNotifier {
   DateTime? reachedPickupAt;
   DateTime? pickedUpAt;
   DateTime? deliveredAt;
+
+  /// ✅ Helper method for robust coordinate parsing
+  double? _parseCoordinate(dynamic value) {
+    if (value == null) return null;
+
+    // Already a double
+    if (value is double) return value;
+
+    // Already an int
+    if (value is int) return value.toDouble();
+
+    // String parsing
+    if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty) return null;
+      return double.tryParse(trimmed);
+    }
+
+    // Fallback
+    return null;
+  }
+
+  /// ✅ Validation getters
+  bool get hasValidPickupCoordinates {
+    return pickupLat != null &&
+        pickupLng != null &&
+        pickupLat != 0.0 &&
+        pickupLng != 0.0;
+  }
+
+  bool get hasValidDeliveryCoordinates {
+    return deliveryLat != null &&
+        deliveryLng != null &&
+        deliveryLat != 0.0 &&
+        deliveryLng != 0.0;
+  }
 
   /// Load order details from backend
   Future<void> loadOrderDetails(String orderId) async {
@@ -77,7 +113,7 @@ class OrderTrackingController extends ChangeNotifier {
         if (data['success'] == true) {
           final order = data['order'];
 
-          // ✅ Handle empty or null status - default to 'accepted'
+          // Handle empty or null status - default to 'accepted'
           final rawStatus = order['status'];
           if (rawStatus == null || rawStatus.toString().trim().isEmpty) {
             orderStatus = 'accepted';
@@ -93,22 +129,30 @@ class OrderTrackingController extends ChangeNotifier {
           messAddress = order['mess_address'] ?? '';
           messPhone = order['mess_phone'] ?? '';
           orderAmount = double.tryParse(order['total_amount'].toString()) ?? 0.0;
-          deliveryFee = double.tryParse(order['delivery_fee'].toString()) ?? 0.0; // ✅ Added
+          deliveryFee = double.tryParse(order['delivery_fee'].toString()) ?? 0.0;
           paymentMethod = order['payment_method'] ?? '';
 
-          // Parse coordinates
-          pickupLat = order['pickup_latitude'] != null
-              ? double.tryParse(order['pickup_latitude'].toString())
-              : null;
-          pickupLng = order['pickup_longitude'] != null
-              ? double.tryParse(order['pickup_longitude'].toString())
-              : null;
-          deliveryLat = order['delivery_latitude'] != null
-              ? double.tryParse(order['delivery_latitude'].toString())
-              : null;
-          deliveryLng = order['delivery_longitude'] != null
-              ? double.tryParse(order['delivery_longitude'].toString())
-              : null;
+          // ✅ Enhanced coordinate parsing with helper + fallback
+          pickupLat = _parseCoordinate(order['pickup_latitude']);
+          pickupLng = _parseCoordinate(order['pickup_longitude']);
+          deliveryLat = _parseCoordinate(order['delivery_latitude']);
+          deliveryLng = _parseCoordinate(order['delivery_longitude']);
+
+          // ✅ Fallback to customer_address coordinates if delivery coords missing
+          if (!hasValidDeliveryCoordinates) {
+            debugPrint('⚠️ Delivery coordinates missing, checking customer_address...');
+            deliveryLat = _parseCoordinate(order['customer_latitude']) ??
+                _parseCoordinate(order['customer_address_latitude']);
+            deliveryLng = _parseCoordinate(order['customer_longitude']) ??
+                _parseCoordinate(order['customer_address_longitude']);
+          }
+
+          // ✅ Debug logging - Shows coordinate values after parsing
+          debugPrint('📍 Coordinates parsed:');
+          debugPrint('   Pickup: ${pickupLat ?? "null"}, ${pickupLng ?? "null"}');
+          debugPrint('   Delivery: ${deliveryLat ?? "null"}, ${deliveryLng ?? "null"}');
+          debugPrint('   Valid Pickup: $hasValidPickupCoordinates');
+          debugPrint('   Valid Delivery: $hasValidDeliveryCoordinates');
 
           // Parse order items
           if (order['items'] != null && order['items'] is List) {
@@ -124,6 +168,9 @@ class OrderTrackingController extends ChangeNotifier {
           if (order['accepted_at'] != null) {
             acceptedAt = DateTime.tryParse(order['accepted_at']);
           }
+          if (order['reached_pickup_at'] != null) {
+            reachedPickupAt = DateTime.tryParse(order['reached_pickup_at']);
+          }
           if (order['picked_up_at'] != null) {
             pickedUpAt = DateTime.tryParse(order['picked_up_at']);
           }
@@ -135,7 +182,7 @@ class OrderTrackingController extends ChangeNotifier {
           debugPrint('   Customer: $customerName');
           debugPrint('   Mess: $messName');
           debugPrint('   Amount: ₹$orderAmount');
-          debugPrint('   Delivery Fee: ₹$deliveryFee'); // ✅ Added
+          debugPrint('   Delivery Fee: ₹$deliveryFee');
           debugPrint('   Status: $orderStatus');
           debugPrint('   Items: ${items.length}');
         } else {
@@ -163,16 +210,18 @@ class OrderTrackingController extends ChangeNotifier {
       );
 
       if (result['success'] == true) {
-        // ✅ Update status from backend response or use fallback
+        // Update status from backend response or use fallback
         if (result['status'] != null && result['status'].toString().isNotEmpty) {
           orderStatus = result['status'].toString();
         } else {
-          // Fallback to 'reached_pickup' if backend doesn't return status
           orderStatus = 'reached_pickup';
         }
 
         reachedPickupAt = DateTime.now();
-        notifyListeners();
+
+        // ✅ Auto-reload after markReachedPickup() - Refreshes coordinates
+        debugPrint('🔄 Auto-reloading order details after reached pickup...');
+        await loadOrderDetails(orderId);
 
         debugPrint('✅ Marked as reached pickup successfully');
         debugPrint('📊 New status: $orderStatus');
@@ -198,15 +247,18 @@ class OrderTrackingController extends ChangeNotifier {
       );
 
       if (result['success'] == true) {
-        // ✅ Update status from backend response
+        // Update status from backend response
         if (result['status'] != null && result['status'].toString().isNotEmpty) {
           orderStatus = result['status'].toString();
         } else {
-          orderStatus = 'out_for_delivery'; // Default fallback
+          orderStatus = 'out_for_delivery';
         }
 
         pickedUpAt = DateTime.now();
-        notifyListeners();
+
+        // ✅ Auto-reload after markPickedUp() - Refreshes coordinates
+        debugPrint('🔄 Auto-reloading order details after picked up...');
+        await loadOrderDetails(orderId);
 
         debugPrint('✅ Order marked as picked up successfully');
         debugPrint('📊 New status: $orderStatus');
@@ -274,17 +326,41 @@ class OrderTrackingController extends ChangeNotifier {
   }
 
   /// Get total distance between pickup and delivery points
+  /// ✅ Validation in totalDistance - Checks for 0.0 values
   String get totalDistance {
-    if (pickupLat == null || deliveryLat == null) return '--';
-    final dist = _calculateDistance(pickupLat!, pickupLng!, deliveryLat!, deliveryLng!);
+    if (!hasValidPickupCoordinates || !hasValidDeliveryCoordinates) {
+      debugPrint('⚠️ Cannot calculate distance: Invalid coordinates');
+      return '--';
+    }
+
+    final dist = _calculateDistance(
+        pickupLat!,
+        pickupLng!,
+        deliveryLat!,
+        deliveryLng!
+    );
+
+    debugPrint('📏 Total distance calculated: ${dist.toStringAsFixed(1)} km');
     return '${dist.toStringAsFixed(1)} km';
   }
 
   /// Get estimated delivery time based on distance
+  /// ✅ Validation in estimatedDeliveryTime - Checks for 0.0 values
   String get estimatedDeliveryTime {
-    if (pickupLat == null || deliveryLat == null) return '--';
-    final dist = _calculateDistance(pickupLat!, pickupLng!, deliveryLat!, deliveryLng!);
+    if (!hasValidPickupCoordinates || !hasValidDeliveryCoordinates) {
+      debugPrint('⚠️ Cannot estimate time: Invalid coordinates');
+      return '--';
+    }
+
+    final dist = _calculateDistance(
+        pickupLat!,
+        pickupLng!,
+        deliveryLat!,
+        deliveryLng!
+    );
+
     final mins = ((dist / 30) * 60).round(); // Assume 30 km/h avg speed
+    debugPrint('⏱️ Estimated delivery time: $mins mins');
     return '$mins mins';
   }
 
@@ -303,6 +379,7 @@ class OrderTrackingController extends ChangeNotifier {
   double _toRadians(double deg) => deg * (pi / 180);
 
   /// Set order details manually (useful when data comes from parent screen)
+  /// ✅ Debug in setOrderDetails() - Logs manual coordinate setting
   void setOrderDetails({
     required String status,
     required String custName,
@@ -319,7 +396,7 @@ class OrderTrackingController extends ChangeNotifier {
     double? delivLat,
     double? delivLng,
   }) {
-    orderStatus = status.isEmpty ? 'accepted' : status; // Handle empty status
+    orderStatus = status.isEmpty ? 'accepted' : status;
     customerName = custName;
     customerPhone = custPhone;
     deliveryAddress = delivAddress;
@@ -329,10 +406,21 @@ class OrderTrackingController extends ChangeNotifier {
     orderAmount = amount;
     paymentMethod = payment;
     items = orderItems ?? [];
-    pickupLat = pickLat;
-    pickupLng = pickLng;
-    deliveryLat = delivLat;
-    deliveryLng = delivLng;
+
+    // ✅ Use helper for manual coordinate setting
+    pickupLat = _parseCoordinate(pickLat);
+    pickupLng = _parseCoordinate(pickLng);
+    deliveryLat = _parseCoordinate(delivLat);
+    deliveryLng = _parseCoordinate(delivLng);
+
+    // ✅ Debug logging for manual coordinate setting
+    debugPrint('🔧 Manual order details set:');
+    debugPrint('   Status: $orderStatus');
+    debugPrint('   Pickup coords: ${pickupLat ?? "null"}, ${pickupLng ?? "null"}');
+    debugPrint('   Delivery coords: ${deliveryLat ?? "null"}, ${deliveryLng ?? "null"}');
+    debugPrint('   Valid Pickup: $hasValidPickupCoordinates');
+    debugPrint('   Valid Delivery: $hasValidDeliveryCoordinates');
+
     notifyListeners();
   }
 

@@ -53,11 +53,12 @@ class DeliveriesController extends ChangeNotifier {
   String _normalizeStatus(String backendStatus) {
     final s = backendStatus.toLowerCase();
     if (s == 'delivered') return 'Completed';
-    if (s == 'cancelled' || s == 'canceled') return 'Cancelled';
-    if (s == 'pending' || s == 'out_for_delivery' || s == 'picked_up') {
+    if (s == 'cancelled' || s == 'canceled' || s == 'rejected') return 'Cancelled';
+    if (s == 'pending' || s == 'out_for_delivery' || s == 'picked_up' ||
+        s == 'in_transit' || s == 'accepted' || s == 'reached_pickup') {
       return 'Pending';
     }
-    if (s == 'assigned' || s == 'created') return 'New';
+    if (s == 'assigned' || s == 'created' || s == 'confirmed') return 'New';
     // Fallback to original text if unknown
     return backendStatus;
   }
@@ -163,7 +164,7 @@ class DeliveriesController extends ChangeNotifier {
       messName: delivery.messName,
       messAddress: delivery.messAddress,
       messPhone: delivery.messPhone,
-      // ✅ ADD: Preserve distance fields
+      // ✅ Preserve distance fields
       distBoyToMess: delivery.distBoyToMess,
       distMessToCust: delivery.distMessToCust,
       totalDistance: delivery.totalDistance,
@@ -172,7 +173,6 @@ class DeliveriesController extends ChangeNotifier {
     _repo.addOrUpdateOrder(updated);
     notifyListeners();
   }
-
 
   /// ✅ Fetch/refresh all deliveries from backend
   Future fetchDeliveries() async {
@@ -198,14 +198,13 @@ class DeliveriesController extends ChangeNotifier {
       // ✅ Load all types of orders
       await fetchNewOrders();
       await fetchActiveOrders();
-      await fetchOrderHistory();        // ✅ IMPORTANT: re‑enable this
-      // or: await fetchOrderHistory(limit: 50);
+      await fetchOrderHistory();
 
       _isLoading = false;
       _errorMessage = null;
       notifyListeners();
       debugPrint('✅ All deliveries fetched successfully');
-      debugPrint(' Total orders: ${_repo.realDeliveryCount}');
+      debugPrint('   Total orders: ${_repo.realDeliveryCount}');
     } catch (e) {
       _isLoading = false;
       _errorMessage = 'Failed to fetch deliveries: $e';
@@ -213,7 +212,6 @@ class DeliveriesController extends ChangeNotifier {
       debugPrint('❌ Error fetching deliveries: $e');
     }
   }
-
 
   /// ✅ Fetch active/ongoing orders
   Future<void> fetchActiveOrders() async {
@@ -234,9 +232,9 @@ class DeliveriesController extends ChangeNotifier {
           try {
             final delivery = DeliveryModel.fromJson(orderData);
             _repo.addOrUpdateOrder(delivery);
-            debugPrint(' ➕ Added active order: ${delivery.id}');
+            debugPrint('   ➕ Added active order: ${delivery.id}');
           } catch (e) {
-            debugPrint(' ⚠️ Error parsing order: $e');
+            debugPrint('   ⚠️ Error parsing order: $e');
           }
         }
 
@@ -266,9 +264,9 @@ class DeliveriesController extends ChangeNotifier {
           try {
             final delivery = DeliveryModel.fromJson(orderData);
             _repo.addOrUpdateOrder(delivery);
-            debugPrint(' ➕ Added new order: ${delivery.id}');
+            debugPrint('   ➕ Added new order: ${delivery.id}');
           } catch (e) {
-            debugPrint(' ⚠️ Error parsing order: $e');
+            debugPrint('   ⚠️ Error parsing order: $e');
           }
         }
 
@@ -279,35 +277,112 @@ class DeliveriesController extends ChangeNotifier {
     }
   }
 
-  /// ✅ Fetch order history
-  Future<void> fetchOrderHistory({int? limit}) async {
+  /// ✅ Fetch order history with optional filters
+  Future<void> fetchOrderHistory({
+    int? limit,
+    DateTime? startDate,
+    DateTime? endDate,
+    String status = 'all',
+  }) async {
     try {
       final deliveryPartnerId = _authController?.user?.id ?? '';
       if (deliveryPartnerId.isEmpty) return;
 
       debugPrint('🔄 Fetching order history...');
-      final result = await DeliveryService.getOrderHistory(
-        deliveryPartnerId: deliveryPartnerId,
-        limit: limit,
-      );
 
-      if (result['success'] == true) {
-        final orders = result['orders'] as List? ?? [];
-        debugPrint('✅ Fetched ${result['count']} historical orders');
-
-        for (var orderData in orders) {
-          try {
-            final delivery = DeliveryModel.fromJson(orderData);
-            _repo.addOrUpdateOrder(delivery);
-          } catch (e) {
-            debugPrint(' ⚠️ Error parsing history order: $e');
-          }
+      // Use getDeliveryHistory if we have date filters, otherwise use getOrderHistory
+      if (startDate != null || endDate != null || status != 'all') {
+        debugPrint('   Using filtered history API...');
+        if (startDate != null || endDate != null) {
+          debugPrint('   Date: ${startDate?.toString().split(' ')[0] ?? 'All'} - ${endDate?.toString().split(' ')[0] ?? 'All'}');
         }
+        debugPrint('   Status: $status');
 
-        notifyListeners();
+        final result = await DeliveryService.getDeliveryHistory(
+          deliveryPartnerId: deliveryPartnerId,
+          startDate: startDate,
+          endDate: endDate,
+          status: status,
+          limit: limit ?? 100,
+        );
+
+        if (result['success'] == true) {
+          final orders = result['deliveries'] as List? ?? [];
+          debugPrint('✅ Fetched ${result['count']} filtered historical orders');
+
+          for (var orderData in orders) {
+            try {
+              final delivery = DeliveryModel.fromJson(orderData);
+              _repo.addOrUpdateOrder(delivery);
+            } catch (e) {
+              debugPrint('   ⚠️ Error parsing history order: $e');
+            }
+          }
+
+          notifyListeners();
+        }
+      } else {
+        // Default: use existing getOrderHistory method
+        debugPrint('   Using default history API...');
+        final result = await DeliveryService.getOrderHistory(
+          deliveryPartnerId: deliveryPartnerId,
+          limit: limit ?? 100,
+        );
+
+        if (result['success'] == true) {
+          final orders = result['orders'] as List? ?? [];
+          debugPrint('✅ Fetched ${result['count']} historical orders');
+
+          for (var orderData in orders) {
+            try {
+              final delivery = DeliveryModel.fromJson(orderData);
+              _repo.addOrUpdateOrder(delivery);
+            } catch (e) {
+              debugPrint('   ⚠️ Error parsing history order: $e');
+            }
+          }
+
+          notifyListeners();
+        }
       }
     } catch (e) {
       debugPrint('❌ Error fetching order history: $e');
+    }
+  }
+
+  /// ✅ NEW: Fetch filtered deliveries specifically for history view
+  Future<List<DeliveryModel>> fetchFilteredHistory({
+    DateTime? startDate,
+    DateTime? endDate,
+    String status = 'all',
+  }) async {
+    try {
+      final deliveryPartnerId = _authController?.user?.id ?? '';
+      if (deliveryPartnerId.isEmpty) return [];
+
+      debugPrint('🔄 Fetching filtered history for display...');
+      debugPrint('   Date: ${startDate?.toString().split(' ')[0] ?? 'All'} - ${endDate?.toString().split(' ')[0] ?? 'All'}');
+      debugPrint('   Status: $status');
+
+      final result = await DeliveryService.getDeliveryHistory(
+        deliveryPartnerId: deliveryPartnerId,
+        startDate: startDate,
+        endDate: endDate,
+        status: status,
+        limit: 500,
+      );
+
+      if (result['success'] == true) {
+        final orders = result['deliveries'] as List? ?? [];
+        debugPrint('✅ Fetched ${result['count']} filtered deliveries for display');
+
+        return orders.map((json) => DeliveryModel.fromJson(json)).toList();
+      }
+
+      return [];
+    } catch (e) {
+      debugPrint('❌ Error fetching filtered history: $e');
+      return [];
     }
   }
 
@@ -450,8 +525,7 @@ class DeliveriesController extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage =
-            result['message'] ?? 'Failed to mark as picked up';
+        _errorMessage = result['message'] ?? 'Failed to mark as picked up';
         notifyListeners();
         return false;
       }
@@ -491,8 +565,7 @@ class DeliveriesController extends ChangeNotifier {
         notifyListeners();
         return true;
       } else {
-        _errorMessage =
-            result['message'] ?? 'Failed to mark as delivered';
+        _errorMessage = result['message'] ?? 'Failed to mark as delivered';
         notifyListeners();
         return false;
       }

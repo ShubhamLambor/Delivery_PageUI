@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/repository/user_repository.dart';
-import '../../services/profile_photo_service.dart'; // ✅ Add this
+import '../../services/profile_photo_service.dart';
 
 class ProfileController extends ChangeNotifier {
   final UserRepository _repo = UserRepository();
-  final ProfilePhotoService _photoService = ProfilePhotoService(); // ✅ Add this
+  final ProfilePhotoService _photoService = ProfilePhotoService();
 
   String name = '';
   String email = '';
   String phone = '';
-  String profilePic = '';
+  String profilePic = ''; // ✅ Now stores network URL
   DateTime? registrationDate;
 
   // Verification status
@@ -38,7 +38,7 @@ class ProfileController extends ChangeNotifier {
     loadUserData();
   }
 
-  // ✅ Updated to load local photo
+  // ✅ Updated to load network photo URL
   Future<void> loadUserData() async {
     isLoading = true;
     notifyListeners();
@@ -59,14 +59,14 @@ class ProfileController extends ChangeNotifier {
       isEmailVerified = user.isEmailVerified ?? false;
       isPhoneVerified = user.isPhoneVerified ?? false;
 
-      // ✅ Load local profile photo
-      final localPhotoPath = await _photoService.getProfilePhotoPath();
-      if (localPhotoPath != null) {
-        profilePic = localPhotoPath;
-        print('[PROFILE_CONTROLLER] ✅ Local photo loaded: $localPhotoPath');
+      // ✅ Load network photo URL from local cache first, then server
+      final cachedPhotoUrl = await _photoService.getProfilePhotoUrl();
+      if (cachedPhotoUrl != null && cachedPhotoUrl.isNotEmpty) {
+        profilePic = cachedPhotoUrl;
+        print('[PROFILE_CONTROLLER] ✅ Cached photo URL loaded: $cachedPhotoUrl');
       } else {
         profilePic = user.profilePic; // Fallback to server photo
-        print('[PROFILE_CONTROLLER] Using server photo');
+        print('[PROFILE_CONTROLLER] Using server photo URL: ${user.profilePic}');
       }
 
     } catch (e) {
@@ -80,14 +80,14 @@ class ProfileController extends ChangeNotifier {
         email = prefs.getString('userEmail') ?? '';
         phone = prefs.getString('userPhone') ?? '';
 
-        // ✅ Load local photo
-        final localPhotoPath = await _photoService.getProfilePhotoPath();
-        profilePic = localPhotoPath ?? prefs.getString('userProfilePic') ?? '';
+        // ✅ Load photo URL from cache
+        final cachedPhotoUrl = await _photoService.getProfilePhotoUrl();
+        profilePic = cachedPhotoUrl ?? prefs.getString('userProfilePic') ?? '';
 
         print('[PROFILE_CONTROLLER] Loaded from SharedPreferences:');
         print('  Name: $name');
         print('  Email: $email');
-        print('  Photo: $profilePic');
+        print('  Photo URL: $profilePic');
       } catch (prefError) {
         print('[PROFILE_CONTROLLER] ❌ Failed to load from SharedPreferences: $prefError');
       }
@@ -112,6 +112,7 @@ class ProfileController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ✅ Updated to handle network URLs
   Future<void> updateProfilePic(String urlOrPath) async {
     _repo.updateProfilePic(urlOrPath);
     profilePic = urlOrPath;
@@ -142,7 +143,7 @@ class ProfileController extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ✅ Updated changeProfilePhoto method
+  // ✅ FIXED: Updated changeProfilePhoto method - NO OVERFLOW
   Future<void> changeProfilePhoto(BuildContext context) async {
     final source = await showModalBottomSheet<ImageSource>(
       context: context,
@@ -222,38 +223,154 @@ class ProfileController extends ChangeNotifier {
       ),
     );
 
+    // ✅ Handle photo removal
     if (source == null && profilePic.isNotEmpty) {
-      // User wants to delete photo
-      await _photoService.deleteProfilePhoto();
-      profilePic = '';
-      notifyListeners();
+      // Show confirmation dialog
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Remove Photo'),
+          content: const Text('Are you sure you want to remove your profile photo?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Remove'),
+            ),
+          ],
+        ),
+      );
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile photo removed')),
-        );
+      if (confirmed == true) {
+        await _photoService.deleteProfilePhoto();
+        profilePic = '';
+        notifyListeners();
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Profile photo removed'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       }
       return;
     }
 
     if (source == null) return;
 
-    // Pick and save photo
-    String? newPath;
-    if (source == ImageSource.camera) {
-      newPath = await _photoService.pickFromCamera();
-    } else {
-      newPath = await _photoService.pickFromGallery();
+    // ✅ FIXED: Show loading dialog with proper constraints
+    if (context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => PopScope(
+          canPop: false,
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              margin: const EdgeInsets.symmetric(horizontal: 40), // ✅ Add margin
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Uploading photo...',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[700],
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center, // ✅ Center align
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
     }
 
-    if (newPath != null) {
-      await updateProfilePic(newPath);
+    // ✅ Pick and upload photo to server
+    String? newPhotoUrl;
+    try {
+      if (source == ImageSource.camera) {
+        newPhotoUrl = await _photoService.pickFromCamera();
+      } else {
+        newPhotoUrl = await _photoService.pickFromGallery();
+      }
+    } catch (e) {
+      print('[PROFILE_CONTROLLER] Error picking/uploading photo: $e');
+    }
+
+    // ✅ Close loading dialog
+    if (context.mounted) {
+      Navigator.pop(context);
+    }
+
+    // ✅ FIXED: Handle result with Flexible widget
+    if (newPhotoUrl != null && newPhotoUrl.isNotEmpty) {
+      await updateProfilePic(newPhotoUrl);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Profile photo updated!'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Flexible( // ✅ Wrap in Flexible to prevent overflow
+                  child: Text(
+                    'Profile photo updated successfully!',
+                    style: const TextStyle(color: Colors.white),
+                    overflow: TextOverflow.ellipsis, // ✅ Handle long text
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } else {
+      // ✅ FIXED: Show error message with Flexible
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Flexible( // ✅ Wrap in Flexible to prevent overflow
+                  child: Text(
+                    'Failed to upload photo. Please try again.',
+                    style: const TextStyle(color: Colors.white),
+                    overflow: TextOverflow.ellipsis, // ✅ Handle long text
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red.shade600,
+            duration: const Duration(seconds: 3),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: () => changeProfilePhoto(context),
+            ),
           ),
         );
       }

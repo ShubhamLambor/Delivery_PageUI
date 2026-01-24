@@ -9,7 +9,6 @@ class DeliveryConfirmationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ CRITICAL FIX: Wrap Column in SingleChildScrollView to prevent overflow
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -41,7 +40,6 @@ class DeliveryConfirmationScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // ✅ FIXED: Wrapped text with proper constraints
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
@@ -51,65 +49,65 @@ class DeliveryConfirmationScreen extends StatelessWidget {
                 fontSize: 16,
                 color: Colors.grey[600],
               ),
-              maxLines: 2, // ✅ Limit lines
-              overflow: TextOverflow.ellipsis, // ✅ Handle overflow
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           const SizedBox(height: 32),
 
-          // Earnings Card
+          // ✅ FIXED: Earnings Card - Show only ONE delivery fee
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
               ),
               borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.green.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
             child: Column(
               children: [
-                Text(
-                  '₹${controller.deliveryFee.toStringAsFixed(2)}', // ✅ Use actual delivery fee
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
+                // ✅ Show ONLY delivery fee (not two values)
                 Text(
                   '₹${(controller.orderAmount * 0.1).toStringAsFixed(2)}',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 36,
+                    fontSize: 48,
                     fontWeight: FontWeight.bold,
+                    letterSpacing: 1.2,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 const Text(
                   'Delivery Fee',
                   style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
 
-          // Stats
+          // ✅ FIXED: Stats with proper type handling
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildStat('Distance', '${controller.totalDistance}'),
-              _buildStat('Time', '25 mins'),
+              _buildStat('Distance', _formatDistance(controller.totalDistance)),
+              _buildStat('Time', '25 mins'), // ✅ Static value or calculate from your data
               _buildStat('Rating', '⭐ 5.0'),
             ],
           ),
 
-          // ✅ FIXED: Add spacing instead of Spacer (Spacer doesn't work in ScrollView)
           const SizedBox(height: 40),
 
           // Done Button
@@ -126,6 +124,7 @@ class DeliveryConfirmationScreen extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                elevation: 2,
               ),
               child: const Text(
                 'Back to Home',
@@ -134,26 +133,54 @@ class DeliveryConfirmationScreen extends StatelessWidget {
             ),
           ),
 
-          // ✅ Added bottom padding for safe area
           const SizedBox(height: 24),
         ],
       ),
     );
   }
 
+  // ✅ Helper method to format distance (handles both String and num types)
+  String _formatDistance(dynamic distance) {
+    if (distance == null) return '0.0 km';
+
+    // If it's already a String, return as is with km suffix
+    if (distance is String) {
+      // Check if it already has 'km'
+      if (distance.contains('km')) {
+        return distance;
+      }
+      // Try to parse it as double
+      try {
+        final distanceValue = double.parse(distance);
+        return '${distanceValue.toStringAsFixed(1)} km';
+      } catch (e) {
+        return '$distance km';
+      }
+    }
+
+    // If it's a number (double or int)
+    if (distance is num) {
+      return '${distance.toStringAsFixed(1)} km';
+    }
+
+    return '0.0 km';
+  }
+
   Widget _buildStat(String label, String value) {
-    return Flexible( // ✅ Changed from implicit sizing to Flexible
+    return Flexible(
       child: Column(
-        mainAxisSize: MainAxisSize.min, // ✅ Added
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             value,
             style: const TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
+              color: Colors.black87,
             ),
-            maxLines: 1, // ✅ Prevent overflow
-            overflow: TextOverflow.ellipsis, // ✅ Handle overflow
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
           Text(
@@ -162,8 +189,9 @@ class DeliveryConfirmationScreen extends StatelessWidget {
               fontSize: 12,
               color: Colors.grey[600],
             ),
-            maxLines: 1, // ✅ Prevent overflow
-            overflow: TextOverflow.ellipsis, // ✅ Handle overflow
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
           ),
         ],
       ),
