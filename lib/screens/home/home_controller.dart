@@ -159,10 +159,11 @@ class HomeController extends ChangeNotifier {
       if (result['success'] == true && result['stats'] != null) {
         final stats = result['stats'];
 
-        _todayEarnings = int.tryParse(stats['todayearnings']?.toString() ?? '0') ?? 0;
-        _completedToday = int.tryParse(stats['completedtoday']?.toString() ?? '0') ?? 0;
-        _pendingToday = int.tryParse(stats['pendingtoday']?.toString() ?? '0') ?? 0;
-        _cancelledToday = int.tryParse(stats['cancelledtoday']?.toString() ?? '0') ?? 0;
+        // ✅ Handle both int and double values
+        _todayEarnings = ((stats['todayearnings'] ?? 0) as num).toInt();
+        _completedToday = (stats['completedtoday'] ?? 0) as int;
+        _pendingToday = (stats['pendingtoday'] ?? 0) as int;
+        _cancelledToday = (stats['cancelledtoday'] ?? 0) as int;
 
         debugPrint('✅ [HOME_CONTROLLER] Stats fetched successfully:');
         debugPrint('   Today Earnings: ₹$_todayEarnings');
@@ -178,6 +179,7 @@ class HomeController extends ChangeNotifier {
       debugPrint('❌ [HOME_CONTROLLER] Error fetching stats: $e');
     }
   }
+
 
   /// Fetch deliveries from backend
   Future<void> fetchDeliveries() async {

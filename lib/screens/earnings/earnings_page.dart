@@ -19,27 +19,34 @@ class _EarningsPageState extends State<EarningsPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final auth = context.read<AuthController>();
-      final partnerId = auth.getCurrentUserId() ?? '';
-      if (partnerId.isNotEmpty) {
-        context
-            .read<EarningsController>()
-            .fetchEarnings(partnerId, period: _period);
-      }
+      _fetchEarnings();
     });
   }
 
-  void _changePeriod(String period) {
-    if (_period == period) return;
-    setState(() => _period = period);
-
+  // ✅ Extract fetch logic to reuse
+  void _fetchEarnings() {
     final auth = context.read<AuthController>();
     final partnerId = auth.getCurrentUserId() ?? '';
     if (partnerId.isNotEmpty) {
       context
           .read<EarningsController>()
-          .fetchEarnings(partnerId, period: period);
+          .fetchEarnings(partnerId, period: _period);
     }
+  }
+
+  void _changePeriod(String period) {
+    if (_period == period) return;
+    setState(() => _period = period);
+    _fetchEarnings();
+  }
+
+  // ✅ Pull-to-refresh handler
+  Future<void> _onRefresh() async {
+    print('🔄 [EARNINGS] Manual refresh triggered');
+    _fetchEarnings();
+
+    // Wait for the fetch to complete
+    await Future.delayed(const Duration(milliseconds: 500));
   }
 
   @override
@@ -89,334 +96,352 @@ class _EarningsPageState extends State<EarningsPage> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
-      body: CustomScrollView(
-        slivers: [
-          // Header + Today card + period filters
-          SliverToBoxAdapter(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF43A047), Color(0xFF66BB6A)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+      body: RefreshIndicator( // ✅ Wrap with RefreshIndicator
+        onRefresh: _onRefresh,
+        color: const Color(0xFF43A047),
+        child: CustomScrollView(
+          slivers: [
+            // Header + Today card + period filters
+            SliverToBoxAdapter(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF43A047), Color(0xFF66BB6A)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(30),
+                    bottomRight: Radius.circular(30),
+                  ),
                 ),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(30),
-                  bottomRight: Radius.circular(30),
-                ),
-              ),
-              child: SafeArea(
-                bottom: false,
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 16,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Earnings',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () {
-                              // could open a filter bottom sheet later
-                            },
-                            icon: const Icon(
-                              Icons.filter_list,
-                              color: Colors.white,
-                              size: 26,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Today's Earnings Card
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                      child: Container(
-                        width: double.infinity,
+                child: SafeArea(
+                  bottom: false,
+                  child: Column(
+                    children: [
+                      Padding(
                         padding: const EdgeInsets.symmetric(
-                          vertical: 28,
-                          horizontal: 24,
+                          horizontal: 20,
+                          vertical: 16,
                         ),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: Column(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                color:
-                                const Color(0xFF43A047).withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.today,
-                                color: Color(0xFF43A047),
-                                size: 32,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              "Today's Earnings",
+                            const Text(
+                              'Earnings',
                               style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 15,
-                                fontWeight: FontWeight.w500,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              "₹ ${controller.totalEarnings.toStringAsFixed(0)}",
-                              style: const TextStyle(
-                                color: Colors.black87,
-                                fontSize: 40,
+                                color: Colors.white,
+                                fontSize: 28,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
-                            const SizedBox(height: 20),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 10,
-                                horizontal: 16,
+                            IconButton(
+                              onPressed: _onRefresh, // ✅ Manual refresh button
+                              icon: const Icon(
+                                Icons.refresh,
+                                color: Colors.white,
+                                size: 26,
                               ),
-                              decoration: BoxDecoration(
-                                color:
-                                const Color(0xFF43A047).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(20),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Today's Earnings Card
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 28,
+                            horizontal: 24,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.08),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(
-                                    Icons.trending_up,
-                                    color: Color(0xFF43A047),
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Text(
-                                    "On track",
-                                    style: TextStyle(
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color:
+                                  const Color(0xFF43A047).withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.today,
+                                  color: Color(0xFF43A047),
+                                  size: 32,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                _getPeriodLabel(),
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w500,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                "₹ ${controller.totalEarnings.toStringAsFixed(0)}",
+                                style: const TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 40,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 10,
+                                  horizontal: 16,
+                                ),
+                                decoration: BoxDecoration(
+                                  color:
+                                  const Color(0xFF43A047).withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.trending_up,
                                       color: Color(0xFF43A047),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
+                                      size: 18,
                                     ),
-                                  ),
-                                  const SizedBox(width: 6),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      "${controller.totalDeliveries} deliveries",
+                                      style: const TextStyle(
+                                        color: Color(0xFF43A047),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      "• Avg ₹${controller.avgPerDelivery.toStringAsFixed(0)}",
+                                      style: TextStyle(
+                                        color: Colors.grey[700],
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Period filter buttons
+                      Padding(
+                        padding:
+                        const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Row(
+                          children: [
+                            _periodChip('today', 'Today'),
+                            const SizedBox(width: 8),
+                            _periodChip('week', 'This Week'),
+                            const SizedBox(width: 8),
+                            _periodChip('month', 'This Month'),
+                            const SizedBox(width: 8),
+                            _periodChip('all', 'All Time'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Recent Activity title
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Recent Activity',
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const Spacer(),
+                    if (controller.totalDeliveries > 0)
+                      Text(
+                        '${controller.totalDeliveries} orders',
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 13,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Recent list or empty state
+            if (controller.recent.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.history,
+                        size: 64,
+                        color: Colors.grey[300],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        "No recent transactions",
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 15,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                    final item = controller.recent[index];
+                    final amount =
+                    (item['total_amount'] ?? item['amount'] ?? 0).toString();
+                    final title = 'Order #${item['id'] ?? ''}';
+                    final customer =
+                    (item['customer_name'] ?? 'Customer').toString();
+                    final address =
+                    (item['delivery_address'] ?? '').toString();
+                    final time =
+                    (item['time'] ?? '').toString();
+
+                    return Padding(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.03),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          title: Text(
+                            title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text(
+                                customer,
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                address,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(Icons.access_time,
+                                      size: 14, color: Colors.grey[500]),
+                                  const SizedBox(width: 4),
                                   Text(
-                                    "to reach daily goal",
+                                    time,
                                     style: TextStyle(
-                                      color: Colors.grey[700],
-                                      fontSize: 13,
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
                                     ),
                                   ),
                                 ],
                               ),
+                            ],
+                          ),
+                          trailing: Text(
+                            '₹$amount',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Colors.green,
                             ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-
-                    // Period filter buttons
-                    Padding(
-                      padding:
-                      const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Row(
-                        children: [
-                          _periodChip('today', 'Today'),
-                          const SizedBox(width: 8),
-                          _periodChip('week', 'This Week'),
-                          const SizedBox(width: 8),
-                          _periodChip('month', 'This Month'),
-                          const SizedBox(width: 8),
-                          _periodChip('all', 'All Time'),
-                        ],
-                      ),
-                    ),
-                  ],
+                    );
+                  },
+                  childCount: controller.recent.length,
                 ),
               ),
-            ),
-          ),
 
-          // Recent Activity title
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-              child: Row(
-                children: [
-                  Container(
-                    width: 4,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  const Text(
-                    'Recent Activity',
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const Spacer(),
-                  if (controller.totalDeliveries > 0)
-                    Text(
-                      '${controller.totalDeliveries} orders',
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: 13,
-                      ),
-                    ),
-                ],
+            SliverPadding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).padding.bottom + 80,
               ),
             ),
-          ),
-
-          // Recent list or empty state
-          if (controller.recent.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.history,
-                      size: 64,
-                      color: Colors.grey[300],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      "No recent transactions",
-                      style: TextStyle(
-                        color: Colors.grey[500],
-                        fontSize: 15,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                  final item = controller.recent[index];
-                  final amount =
-                  (item['total_amount'] ?? item['amount'] ?? 0).toString();
-                  final title = 'Order #${item['id'] ?? ''}';
-                  final customer =
-                  (item['customer_name'] ?? 'Customer').toString();
-                  final address =
-                  (item['delivery_address'] ?? '').toString();
-                  final time =
-                  (item['completed_at'] ?? item['time'] ?? '').toString();
-
-                  return Padding(
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: ListTile(
-                        title: Text(
-                          title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const SizedBox(height: 4),
-                            Text(
-                              customer,
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              address,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Icon(Icons.access_time,
-                                    size: 14, color: Colors.grey[500]),
-                                const SizedBox(width: 4),
-                                Text(
-                                  time,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        trailing: Text(
-                          '₹$amount',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                            color: Colors.green,
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-                childCount: controller.recent.length,
-              ),
-            ),
-
-          SliverPadding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).padding.bottom + 80,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
+  }
+
+  // ✅ Helper to get period label
+  String _getPeriodLabel() {
+    switch (_period) {
+      case 'today':
+        return "Today's Earnings";
+      case 'week':
+        return "This Week's Earnings";
+      case 'month':
+        return "This Month's Earnings";
+      case 'all':
+        return "Total Earnings";
+      default:
+        return "Earnings";
+    }
   }
 
   Widget _periodChip(String value, String label) {

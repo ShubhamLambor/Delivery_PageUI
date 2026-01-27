@@ -2,7 +2,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/locale_provider.dart';
 import '../settings/settings_page.dart';
 import 'profile_controller.dart';
 import 'widgets/profile_header.dart';
