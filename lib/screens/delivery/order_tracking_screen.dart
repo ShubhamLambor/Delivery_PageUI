@@ -3,7 +3,7 @@ import 'package:deliveryui/screens/delivery/widgets/delivery_confirmation_screen
 import 'package:deliveryui/screens/delivery/widgets/navigation_screen.dart';
 import 'package:deliveryui/screens/delivery/widgets/order_status_stepper.dart';
 import 'package:deliveryui/screens/delivery/widgets/pickup_screen.dart';
-import 'package:deliveryui/screens/delivery/widgets/waiting_for_order_screen.dart'; // ✅ ADD THIS
+import 'package:deliveryui/screens/delivery/widgets/waiting_for_order_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'order_tracking_controller.dart';
@@ -40,16 +40,13 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   /// ✅ Auto-refresh order details every 5 seconds
   void _startAutoRefresh() {
     _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      // ✅ FIX: Check if widget is still mounted
       if (!mounted) {
         timer.cancel();
         return;
       }
 
-      // ✅ FIX: Use widget's controller reference instead of context.read
       final controller = Provider.of<OrderTrackingController>(context, listen: false);
 
-      // Only refresh if order is not delivered
       if (controller.orderStatus.toLowerCase() != 'delivered') {
         debugPrint('🔄 Auto-refreshing order details...');
         controller.loadOrderDetails(widget.orderId);
@@ -59,7 +56,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
       }
     });
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -80,11 +76,9 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             body: SafeArea(
               child: Column(
                 children: [
-                  // Status Stepper Header
                   OrderStatusStepper(
                     currentStatus: controller.orderStatus,
                   ),
-                  // Main Content based on status
                   Expanded(
                     child: _buildContentForStatus(controller),
                   ),
@@ -100,57 +94,51 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
   Widget _buildContentForStatus(OrderTrackingController controller) {
     final status = controller.orderStatus.toLowerCase().trim();
 
-    switch (status) {
-    // ✅ STEP 1: Show "Waiting" screen when order is accepted/confirmed
-      case 'accepted':
-      case 'confirmed':
-      case 'waiting_for_order':
-      case 'waiting_for_pickup':
-      case '':  // Empty status
-        return WaitingForOrderScreen(controller: controller);
+    // 🔍 CRITICAL DEBUG LINE - SEE WHAT STATUS IS ACTUALLY RETURNED
+    debugPrint('🔍🔍🔍 ROUTING SCREEN FOR STATUS: "$status" 🔍🔍🔍');
 
-    // ✅ STEP 2: Show "Pickup" screen when order is ready
-      case 'ready':
-      case 'ready_for_pickup':
-      case 'at_pickup_location':
-      case 'atpickuplocation':
-      case 'reached_pickup':
-      case 'reachedpickup':
-        return PickupScreen(controller: controller);
-
-    // ✅ STEP 3: Show "Navigation" screen when picked up
-      case 'picked_up':
-      case 'pickedup':
-      case 'out_for_delivery':
-      case 'outfordelivery':
-      case 'in_transit':
-      case 'intransit':
-        return NavigationScreen(controller: controller);
-
-    // ✅ STEP 4: Show "Confirmation" screen when delivered
-      case 'delivered':
-        return DeliveryConfirmationScreen(controller: controller);
-
-      default:
-        return Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.info_outline, size: 80, color: Colors.grey),
-              const SizedBox(height: 16),
-              Text(
-                'Unknown status: "$status"',
-                style: const TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () => controller.loadOrderDetails(widget.orderId),
-                icon: const Icon(Icons.refresh),
-                label: const Text('Refresh'),
-              ),
-            ],
-          ),
-        );
+    // ✅ STEP 1: After accept - Show PickupScreen with "Reached Pickup" slider
+    if (status == 'accepted' ||
+        status == 'confirmed' ||
+        status == 'assigned' ||
+        status == '') {
+      debugPrint('✅ Showing PickupScreen with "Reached Pickup" slider');
+      return PickupScreen(controller: controller);
     }
+
+    // ✅ STEP 2: After reaching mess OR order ready - Show PickupScreen with "Mark Picked Up" slider
+    // FIXED: Combined both conditions to always show PickupScreen
+    if (status == 'at_pickup_location' ||
+        status == 'atpickuplocation' ||
+        status == 'reached_pickup' ||
+        status == 'reachedpickup' ||
+        status == 'ready' ||
+        status == 'ready_for_pickup' ||
+        status == 'waiting_for_order' ||
+        status == 'waiting_for_pickup') {
+      debugPrint('✅ Showing PickupScreen with "Mark Picked Up" slider');
+      return PickupScreen(controller: controller);
+    }
+
+    // ✅ STEP 3: When picked up - Show NavigationScreen
+    if (status == 'picked_up' ||
+        status == 'pickedup' ||
+        status == 'out_for_delivery' ||
+        status == 'outfordelivery' ||
+        status == 'in_transit' ||
+        status == 'intransit') {
+      debugPrint('✅ Showing NavigationScreen');
+      return NavigationScreen(controller: controller);
+    }
+
+    // ✅ STEP 4: Delivered
+    if (status == 'delivered') {
+      debugPrint('✅ Showing DeliveryConfirmationScreen');
+      return DeliveryConfirmationScreen(controller: controller);
+    }
+
+    // ✅ DEFAULT: Unknown status - Show WaitingForOrderScreen
+    debugPrint('⚠️ Unknown status "$status" detected - showing WaitingForOrderScreen');
+    return WaitingForOrderScreen(controller: controller);
   }
 }

@@ -1,8 +1,11 @@
 // lib/screens/profile/profile_controller.dart
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+
 import '../../data/repository/user_repository.dart';
 import '../../services/profile_photo_service.dart';
 
@@ -21,6 +24,18 @@ class ProfileController extends ChangeNotifier {
   bool isPhoneVerified = false;
   bool isLoading = false;
 
+  // === KYC fields from delivery_partners table ===
+  String? vehicleType;
+  String? vehicleNumber;
+  String? drivingLicense;
+  String? aadharNumber;
+  String? panNumber;
+  String? bankAccountNumber;
+  String? ifscCode;
+
+  bool isKycLoading = false;
+  bool hasKyc = false;
+
   // Getter for the UI
   String? get profilePhotoUrl => profilePic.isNotEmpty ? profilePic : null;
 
@@ -38,7 +53,7 @@ class ProfileController extends ChangeNotifier {
     loadUserData();
   }
 
-  // ✅ Updated to load network photo URL
+  // ✅ Updated to load network photo URL + KYC
   Future<void> loadUserData() async {
     isLoading = true;
     notifyListeners();
@@ -69,6 +84,13 @@ class ProfileController extends ChangeNotifier {
         print('[PROFILE_CONTROLLER] Using server photo URL: ${user.profilePic}');
       }
 
+      // ✅ Load KYC (delivery_partners) using user id or phone
+      // Adjust this id according to how your backend identifies the delivery partner
+      final String? userIdForKyc = user.id ?? phone;
+      if (userIdForKyc != null && userIdForKyc.isNotEmpty) {
+        await loadKycData(userIdForKyc);
+      }
+
     } catch (e) {
       print('[PROFILE_CONTROLLER] ⚠️ Error loading from repository: $e');
       print('[PROFILE_CONTROLLER] Falling back to SharedPreferences...');
@@ -97,6 +119,69 @@ class ProfileController extends ChangeNotifier {
     notifyListeners();
     print('[PROFILE_CONTROLLER] ✅ Load complete - Current name: $name');
   }
+
+  // ✅ Fetch KYC data from delivery_partners table
+  // ✅ Fetch KYC data from delivery_partners table (URL-encoded POST)
+  Future<void> loadKycData(String userId) async {
+    isKycLoading = true;
+    notifyListeners();
+
+    try {
+      final uri = Uri.parse(
+        'https://svtechshant.com/tiffin/api/delivery/get_delivery_kyc.php',
+      );
+
+      final res = await http.post(
+        uri,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: {
+          'user_id': userId,
+        },
+        encoding: Encoding.getByName('utf-8'),
+      );
+
+      print('[PROFILE_CONTROLLER] KYC API status: ${res.statusCode}');
+      print('[PROFILE_CONTROLLER] KYC API body: "${res.body}"');
+
+      if (res.statusCode == 200) {
+        if (res.body.trim().isEmpty) {
+          print('[PROFILE_CONTROLLER] ⚠️ Empty KYC response');
+          hasKyc = false;
+        } else {
+          final jsonData = json.decode(res.body);
+          if (jsonData['success'] == true && jsonData['data'] != null) {
+            final data = jsonData['data'];
+
+            vehicleType       = data['vehicle_type'];
+            vehicleNumber     = data['vehicle_number'];
+            drivingLicense    = data['driving_license'];
+            aadharNumber      = data['aadhar_number'];
+            panNumber         = data['pan_number'];
+            bankAccountNumber = data['bank_account_number'];
+            ifscCode          = data['ifsc_code'];
+
+            hasKyc = true;
+            print('[PROFILE_CONTROLLER] ✅ KYC loaded for user $userId');
+          } else {
+            hasKyc = false;
+            print('[PROFILE_CONTROLLER] ⚠️ KYC not found or success=false');
+          }
+        }
+      } else {
+        hasKyc = false;
+        print('[PROFILE_CONTROLLER] ❌ KYC API error: ${res.body}');
+      }
+    } catch (e) {
+      hasKyc = false;
+      print('[PROFILE_CONTROLLER] ❌ KYC load exception: $e');
+    }
+
+    isKycLoading = false;
+    notifyListeners();
+  }
+
 
   Future<void> refreshUserData() async {
     await loadUserData();

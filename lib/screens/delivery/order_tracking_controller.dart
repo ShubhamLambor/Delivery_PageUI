@@ -214,7 +214,7 @@ class OrderTrackingController extends ChangeNotifier {
         if (result['status'] != null && result['status'].toString().isNotEmpty) {
           orderStatus = result['status'].toString();
         } else {
-          orderStatus = 'reached_pickup';
+          orderStatus = 'assigned_to_delivery';
         }
 
         reachedPickupAt = DateTime.now();
@@ -428,14 +428,15 @@ class OrderTrackingController extends ChangeNotifier {
   bool canMarkReachedPickup() {
     return orderStatus == 'accepted' ||
         orderStatus == 'confirmed' ||
+        orderStatus == 'assigned' ||
         orderStatus.isEmpty;
   }
 
   /// Check if order can be marked as picked up
   bool canMarkPickedUp() {
     return orderStatus == 'ready' ||
-        orderStatus == 'at_pickup_location' ||
-        orderStatus == 'reached_pickup';
+        orderStatus == 'ready_for_pickup' ||
+        orderStatus == 'readyforpickup';
   }
 
   /// Check if order can be marked as in transit

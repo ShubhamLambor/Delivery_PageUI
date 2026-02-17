@@ -18,7 +18,13 @@ class OrderStatusStepper extends StatelessWidget {
 
     // ✅ Map various statuses to step indices
     int currentIndex = 0;
-    if (status == 'accepted' || status == 'confirmed' || status == 'waiting_for_order' || status.isEmpty) {
+    if (status == 'accepted' ||
+        status == 'confirmed' ||
+        status == 'assigned' ||
+        status == 'waiting_for_order' ||
+        status == 'at_pickup_location' ||
+        status == 'assigned_to_delivery' ||
+        status.isEmpty) {
       currentIndex = 0;
     } else if (status == 'ready' || status == 'ready_for_pickup' || status == 'reached_pickup' || status == 'at_pickup_location') {
       currentIndex = 1;

@@ -228,12 +228,15 @@ class _PickupScreenState extends State<PickupScreen>
   }
 
   // ==================== BUILD ACTION SLIDERS ====================
+  // ==================== BUILD ACTION SLIDERS ====================
   Widget _buildActionSliders() {
     final status = widget.controller.orderStatus.toLowerCase().trim();
 
     // ✅ Step 1: Show "Reached Pickup" slider
+    // UPDATED: Added 'confirmed' status from auto-assignment
     if (status == 'accepted' ||
-        status == 'confirmed' ||
+        status == 'confirmed' ||  // ✅ From auto-assignment
+        status == 'assigned' ||   // ✅ From auto-assignment
         status == 'waiting_for_order' ||
         status == 'waiting_for_pickup' ||
         status == '') {
@@ -264,13 +267,54 @@ class _PickupScreenState extends State<PickupScreen>
       );
     }
 
-    // ✅ Step 2: Show "Mark Picked Up" slider
-    if (status == 'ready' ||
-        status == 'ready_for_pickup' ||
-        status == 'at_pickup_location' ||
+    // ✅ Waiting at pickup: reached mess but order not ready yet
+    if (status == 'at_pickup_location' ||
         status == 'atpickuplocation' ||
         status == 'reached_pickup' ||
-        status == 'reachedpickup') {
+        status == 'reachedpickup' ||
+        status == 'waiting_for_order' ||
+        status == 'waitingfororder' ||
+        status == 'assigned_to_delivery' ||
+        status == 'assignedtodelivery') {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.amber.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.amber),
+        ),
+        child: Column(
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.hourglass_top, color: Colors.amber),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Reached pickup location. Waiting for mess to mark order ready.',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => widget.controller.loadOrderDetails(widget.controller.orderId),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh Status'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // ✅ Step 2: Show "Mark Picked Up" slider only when mess has marked ready
+    if (status == 'ready' ||
+        status == 'ready_for_pickup' ||
+        status == 'readyforpickup') {
       return Column(
         children: [
           _buildStepIndicator('Step 2 of 3', 'Collect the order from mess'),
