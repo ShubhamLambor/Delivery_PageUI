@@ -45,7 +45,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
         return;
       }
 
-      final controller = Provider.of<OrderTrackingController>(context, listen: false);
+      final controller =
+      Provider.of<OrderTrackingController>(context, listen: false);
 
       if (controller.orderStatus.toLowerCase() != 'delivered') {
         debugPrint('🔄 Auto-refreshing order details...');
@@ -72,17 +73,37 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
             );
           }
 
-          return Scaffold(
-            body: SafeArea(
-              child: Column(
-                children: [
-                  OrderStatusStepper(
-                    currentStatus: controller.orderStatus,
+          final status = controller.orderStatus.toLowerCase().trim();
+          final isDelivered = status == 'delivered';
+
+          return WillPopScope(
+            onWillPop: () async {
+              if (!isDelivered) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Complete this delivery before leaving the screen.',
+                    ),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 2),
                   ),
-                  Expanded(
-                    child: _buildContentForStatus(controller),
-                  ),
-                ],
+                );
+                return false; // 🔒 block back until delivered
+              }
+              return true; // ✅ allow back after delivered
+            },
+            child: Scaffold(
+              body: SafeArea(
+                child: Column(
+                  children: [
+                    OrderStatusStepper(
+                      currentStatus: controller.orderStatus,
+                    ),
+                    Expanded(
+                      child: _buildContentForStatus(controller),
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -107,7 +128,6 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     }
 
     // ✅ STEP 2: After reaching mess OR order ready - Show PickupScreen with "Mark Picked Up" slider
-    // FIXED: Combined both conditions to always show PickupScreen
     if (status == 'at_pickup_location' ||
         status == 'atpickuplocation' ||
         status == 'reached_pickup' ||
@@ -138,7 +158,8 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
     }
 
     // ✅ DEFAULT: Unknown status - Show WaitingForOrderScreen
-    debugPrint('⚠️ Unknown status "$status" detected - showing WaitingForOrderScreen');
+    debugPrint(
+        '⚠️ Unknown status "$status" detected - showing WaitingForOrderScreen');
     return WaitingForOrderScreen(controller: controller);
   }
 }

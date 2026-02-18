@@ -716,6 +716,17 @@ class _HomePageState extends State<HomePage> {
       final auth = context.read<AuthController>();
       final partnerId = auth.getCurrentUserId() ?? '';
 
+      if (partnerId.isEmpty) {
+        debugPrint('❌ No partnerId when marking delivered');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('User not found. Please login again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       debugPrint('✅ Marking order as delivered: $orderId');
 
       try {
@@ -725,37 +736,49 @@ class _HomePageState extends State<HomePage> {
           notes: 'Delivered successfully',
         );
 
-        if (mounted) {
-          if (result['success'] == true) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Row(
-                  children: [
-                    Icon(Icons.celebration, color: Colors.white),
-                    SizedBox(width: 12),
-                    Text('Order delivered successfully!'),
-                  ],
-                ),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 3),
-              ),
-            );
+        if (!mounted) return;
 
-            final deliveriesController = context.read<DeliveriesController>();
-            await deliveriesController.fetchDeliveries();
-
-            final homeController = context.read<HomeController>();
-            await homeController.fetchDeliveries();
-          } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content:
-                Text(result['message'] ?? 'Failed to mark as delivered'),
-                backgroundColor: Colors.red,
-                duration: const Duration(seconds: 3),
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.celebration, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text('Order delivered successfully!'),
+                ],
               ),
-            );
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+
+          // Give backend a moment to update status if needed
+          await Future.delayed(const Duration(seconds: 1));
+
+          // Refresh Controllers
+          final deliveriesController = context.read<DeliveriesController>();
+          final homeController = context.read<HomeController>();
+
+          await Future.wait([
+            deliveriesController.fetchDeliveries(),
+            homeController.refresh(), // fetchOnlineStatus + fetchDeliveries + stats
+          ]);
+
+          // Optionally close tracking screen and return to home
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
           }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                result['message'] ?? 'Failed to mark as delivered',
+              ),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
         }
       } catch (e) {
         debugPrint('❌ Error marking as delivered: $e');
@@ -879,9 +902,13 @@ class _HomePageState extends State<HomePage> {
   /// ✅ FIXED: Handle Accept Order (from NewOrderCard)
   Future<void> handleAcceptOrder(BuildContext context, String orderId) async {
     final deliveriesController = context.read<DeliveriesController>();
+
     try {
       final success = await deliveriesController.acceptOrder(orderId);
-      if (mounted && success) {
+
+      if (!mounted) return;
+
+      if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Order accepted successfully!'),
@@ -889,14 +916,51 @@ class _HomePageState extends State<HomePage> {
             duration: Duration(seconds: 2),
           ),
         );
+
+        // Refresh to update currentDelivery
+        final homeController = context.read<HomeController>();
+        await Future.wait([
+          deliveriesController.fetchDeliveries(),
+          homeController.fetchDeliveries(),
+        ]);
+
+        // Navigate to tracking screen
+        final auth = context.read<AuthController>();
+        final partnerId = auth.getCurrentUserId() ?? '';
+
+        if (partnerId.isNotEmpty) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OrderTrackingScreen(
+                orderId: orderId,
+                deliveryPartnerId: partnerId,
+              ),
+            ),
+          );
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              (deliveriesController.errorMessage?.isNotEmpty ?? false)
+                  ? deliveriesController.errorMessage!
+                  : 'Failed to accept order',
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text((deliveriesController.errorMessage?.isNotEmpty ?? false)
-                ? deliveriesController.errorMessage!
-                : 'Failed to accept order'),
+            content: Text(
+              (deliveriesController.errorMessage?.isNotEmpty ?? false)
+                  ? deliveriesController.errorMessage!
+                  : 'Failed to accept order',
+            ),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 3),
           ),
@@ -904,6 +968,8 @@ class _HomePageState extends State<HomePage> {
       }
     }
   }
+
+
 
   /// ✅ FIXED: Handle Reject Order (from NewOrderCard)
   Future<void> handleRejectOrder(BuildContext context, String orderId) async {

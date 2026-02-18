@@ -3,6 +3,7 @@ import 'package:slide_to_act/slide_to_act.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../map/osm_navigation_screen.dart';
 import '../order_tracking_controller.dart';
+import 'delivery_confirmation_screen.dart'; // ⬅️ add this line
 
 class PickupScreen extends StatefulWidget {
   final OrderTrackingController controller;
@@ -693,6 +694,7 @@ class _PickupScreenState extends State<PickupScreen>
 
     if (confirmed == true) {
       final success = await widget.controller.markDelivered();
+
       if (success && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -707,12 +709,17 @@ class _PickupScreenState extends State<PickupScreen>
             behavior: SnackBarBehavior.floating,
           ),
         );
+
         setState(() {});
-        Future.delayed(const Duration(seconds: 2), () {
-          if (context.mounted) {
-            Navigator.pop(context);
-          }
-        });
+
+        // Go to delivery confirmation screen in the same flow
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) =>
+                DeliveryConfirmationScreen(controller: widget.controller),
+          ),
+        );
       } else if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -723,6 +730,7 @@ class _PickupScreenState extends State<PickupScreen>
       }
     }
   }
+
 
   Future<void> _callMess(String phone) async {
     final Uri uri = Uri(scheme: 'tel', path: phone);
