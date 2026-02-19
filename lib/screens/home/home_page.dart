@@ -673,6 +673,7 @@ class _HomePageState extends State<HomePage> {
 
   /// Handle Mark as Delivered
   void _handleMarkDelivered(BuildContext context, String orderId) async {
+    // 0) Confirm final delivery intent
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -698,7 +699,7 @@ class _HomePageState extends State<HomePage> {
           ElevatedButton.icon(
             onPressed: () => Navigator.pop(context, true),
             icon: const Icon(Icons.check, size: 18),
-            label: const Text('Confirm Delivery'),
+            label: const Text('Yes, proceed with OTP'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,
@@ -712,87 +713,160 @@ class _HomePageState extends State<HomePage> {
       ),
     );
 
-    if (confirm == true && mounted) {
-      final auth = context.read<AuthController>();
-      final partnerId = auth.getCurrentUserId() ?? '';
+    if (confirm != true || !mounted) return;
 
-      if (partnerId.isEmpty) {
-        debugPrint('❌ No partnerId when marking delivered');
+    final auth = context.read<AuthController>();
+    final partnerId = auth.getCurrentUserId() ?? '';
+
+    if (partnerId.isEmpty) {
+      debugPrint('❌ No partnerId when marking delivered');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('User not found. Please login again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    debugPrint('✅ Starting OTP flow for order: $orderId');
+
+    try {
+      // 1) Generate OTP (only orderId)
+      final gen = await DeliveryService.generateDeliveryOtp(
+        orderId: orderId,
+        // remove customerId from Dart & PHP signature if you had it
+      );
+
+      if (gen['success'] != true) {
+        debugPrint('❌ Failed to generate OTP: ${gen['message']}');
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('User not found. Please login again.'),
+          SnackBar(
+            content: Text(gen['message'] ?? 'Failed to generate OTP'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
         return;
       }
 
-      debugPrint('✅ Marking order as delivered: $orderId');
+      // 2) Ask rider to enter OTP
+      final otpController = TextEditingController();
+      final enteredOtp = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 16,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Enter Delivery OTP',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Ask the customer for the OTP from their app/SMS and enter it below.',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: otpController,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: const InputDecoration(
+                    labelText: 'OTP',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx, otpController.text.trim());
+                    },
+                    child: const Text('Verify OTP'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      );
 
-      try {
-        final result = await DeliveryService.markDelivered(
-          orderId: orderId,
-          deliveryPartnerId: partnerId,
-          notes: 'Delivered successfully',
+      if (!mounted) return;
+
+      if (enteredOtp == null || enteredOtp.isEmpty) {
+        debugPrint('ℹ️ OTP entry cancelled or empty.');
+        return;
+      }
+
+      // 3) Verify OTP
+      final verify = await DeliveryService.verifyDeliveryOtp(
+        orderId: orderId,
+        otp: enteredOtp,
+      );
+
+      if (verify['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.celebration, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Order delivered successfully!'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
         );
 
-        if (!mounted) return;
+        await Future.delayed(const Duration(seconds: 1));
 
-        if (result['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Row(
-                children: [
-                  Icon(Icons.celebration, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text('Order delivered successfully!'),
-                ],
-              ),
-              backgroundColor: Colors.green,
-              duration: Duration(seconds: 3),
-            ),
-          );
+        final deliveriesController = context.read<DeliveriesController>();
+        final homeController = context.read<HomeController>();
 
-          // Give backend a moment to update status if needed
-          await Future.delayed(const Duration(seconds: 1));
+        await Future.wait([
+          deliveriesController.fetchDeliveries(),
+          homeController.refresh(),
+        ]);
 
-          // Refresh Controllers
-          final deliveriesController = context.read<DeliveriesController>();
-          final homeController = context.read<HomeController>();
-
-          await Future.wait([
-            deliveriesController.fetchDeliveries(),
-            homeController.refresh(), // fetchOnlineStatus + fetchDeliveries + stats
-          ]);
-
-          // Optionally close tracking screen and return to home
-          if (Navigator.canPop(context)) {
-            Navigator.pop(context);
-          }
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                result['message'] ?? 'Failed to mark as delivered',
-              ),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+        if (Navigator.canPop(context)) {
+          Navigator.pop(context);
         }
-      } catch (e) {
-        debugPrint('❌ Error marking as delivered: $e');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Error marking as delivered'),
-              backgroundColor: Colors.red,
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              verify['message'] ?? 'Invalid OTP. Please try again.',
             ),
-          );
-        }
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error in OTP delivery flow: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error verifying OTP'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
+
 
   /// Location Permission
   Future<void> requestLocationPermission() async {

@@ -121,7 +121,17 @@ class DeliveryService {
 
       if (response.statusCode == 200) {
         try {
-          final jsonData = jsonDecode(response.body);
+          // 🔑 Strip any garbage before the JSON
+          final raw = response.body;
+          final start = raw.indexOf('{');
+          if (start < 0) {
+            debugPrint('⚠️ No JSON object found in response');
+            debugPrint('   Raw response: $raw');
+            return [];
+          }
+
+          final jsonString = raw.substring(start).trim();
+          final jsonData = jsonDecode(jsonString);
           debugPrint('📥 Active Deliveries Parsed Data: $jsonData');
 
           if (jsonData['success'] == true ||
@@ -129,11 +139,11 @@ class DeliveryService {
             final List ordersJson = jsonData['orders'] ?? [];
             debugPrint('📦 Found ${ordersJson.length} orders in response');
 
-            final List<DeliveryModel> deliveries =
-            ordersJson.map((orderJson) {
+            final deliveries = ordersJson.map((orderJson) {
               debugPrint(
                   '   📋 Parsing order: ${orderJson['order_id']} - Status: ${orderJson['status']}');
-              return DeliveryModel.fromJson(orderJson);
+              return DeliveryModel.fromJson(
+                  orderJson as Map<String, dynamic>);
             }).toList();
 
             debugPrint('✅ Fetched ${deliveries.length} active deliveries');
@@ -144,7 +154,6 @@ class DeliveryService {
           }
         } catch (e) {
           debugPrint('⚠️ JSON Parse Error: $e');
-          debugPrint('   Raw response: ${response.body}');
           return [];
         }
       } else {
@@ -415,7 +424,7 @@ class DeliveryService {
     }
   }
 
-  /// Get delivery partner's active orders
+  /// Get delivery partner's active orders (raw)
   static Future<Map<String, dynamic>> getActiveOrders({
     required String deliveryPartnerId,
   }) async {
@@ -494,7 +503,7 @@ class DeliveryService {
 
       final response = await http
           .post(
-        Uri.parse('$baseUrl/delivery/get_order.php'),
+        Uri.parse('$baseUrl/delivery/get_order_details.php'),
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json',
@@ -629,7 +638,8 @@ class DeliveryService {
       debugPrint('📋 Fetching delivery history with filters...');
       debugPrint('   Partner: $deliveryPartnerId');
       if (startDate != null || endDate != null) {
-        debugPrint('   Date: ${startDate?.toString().split(' ')[0] ?? 'All'} - ${endDate?.toString().split(' ')[0] ?? 'All'}');
+        debugPrint(
+            '   Date: ${startDate?.toString().split(' ')[0] ?? 'All'} - ${endDate?.toString().split(' ')[0] ?? 'All'}');
       }
       debugPrint('   Status: $status');
 
@@ -641,10 +651,12 @@ class DeliveryService {
       };
 
       if (startDate != null) {
-        body['start_date'] = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+        body['start_date'] =
+        '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
       }
       if (endDate != null) {
-        body['end_date'] = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+        body['end_date'] =
+        '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
       }
 
       final response = await http
@@ -666,7 +678,8 @@ class DeliveryService {
           final jsonData = jsonDecode(response.body);
 
           if (jsonData['success'] == true) {
-            debugPrint('✅ Fetched ${jsonData['count']} deliveries from history');
+            debugPrint(
+                '✅ Fetched ${jsonData['count']} deliveries from history');
             return {
               'success': true,
               'deliveries': jsonData['deliveries'] ?? [],
@@ -816,6 +829,137 @@ class DeliveryService {
     } catch (e) {
       debugPrint('❌ Update Location Error: $e');
       return {'success': false, 'message': 'Failed to update location'};
+    }
+  }
+
+  /// 🔐 Generate delivery OTP
+  static Future<Map<String, dynamic>> generateDeliveryOtp({
+    required String orderId,
+    String? customerId, // optional: only send if you need it
+  }) async {
+    try {
+      debugPrint('🔐 Generating OTP for order: $orderId');
+      if (customerId != null && customerId.isNotEmpty) {
+        debugPrint('   Customer ID: $customerId');
+      }
+
+      final body = <String, String>{
+        'id': orderId,
+        if (customerId != null && customerId.isNotEmpty)
+          'customer_id': customerId,
+      };
+
+      final response = await http
+          .post(
+        Uri.parse('$baseUrl/delivery/generate_delivery_otp.php'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: body,
+        encoding: Encoding.getByName('utf-8'),
+      )
+          .timeout(const Duration(seconds: 15));
+
+      debugPrint('📥 Generate OTP Status: ${response.statusCode}');
+      debugPrint('📥 Generate OTP Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        try {
+          final jsonData = jsonDecode(response.body);
+
+          if (jsonData is Map<String, dynamic>) {
+            // 🧪 TEST ONLY: log OTP if backend sends it
+            if (jsonData['success'] == true && jsonData['otp'] != null) {
+              debugPrint(
+                '🧪 TEST OTP for $orderId: ${jsonData['otp']}',
+              );
+            }
+
+            return jsonData;
+          } else {
+            return {
+              'success': false,
+              'message': 'Invalid server response',
+            };
+          }
+        } catch (e) {
+          debugPrint('⚠️ JSON Parse Error (generate OTP): $e');
+          return {
+            'success': false,
+            'message': 'Invalid server response',
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': 'Server error: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Generate OTP Error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to generate OTP',
+      };
+    }
+  }
+
+  /// 🔐 Verify delivery OTP
+  static Future<Map<String, dynamic>> verifyDeliveryOtp({
+    required String orderId,
+    required String otp,
+  }) async {
+    try {
+      debugPrint('🔐 Verifying OTP for order: $orderId');
+      debugPrint('   OTP: $otp');
+
+      final response = await http
+          .post(
+        Uri.parse('$baseUrl/delivery/verify_delivery_otp.php'),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: {
+          'id': orderId,
+          'otp': otp,
+        },
+        encoding: Encoding.getByName('utf-8'),
+      )
+          .timeout(const Duration(seconds: 15));
+
+      debugPrint('📥 Verify OTP Status: ${response.statusCode}');
+      debugPrint('📥 Verify OTP Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        try {
+          final jsonData = jsonDecode(response.body);
+          return jsonData is Map<String, dynamic>
+              ? jsonData
+              : {
+            'success': false,
+            'message': 'Invalid server response',
+          };
+        } catch (e) {
+          debugPrint('⚠️ JSON Parse Error (verify OTP): $e');
+          return {
+            'success': false,
+            'message': 'Invalid server response',
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'message': 'Server error: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Verify OTP Error: $e');
+      return {
+        'success': false,
+        'message': 'Failed to verify OTP',
+      };
     }
   }
 }

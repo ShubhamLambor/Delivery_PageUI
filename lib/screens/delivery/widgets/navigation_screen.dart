@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../map/osm_navigation_screen.dart';
 import '../order_tracking_controller.dart';
+import '../../../services/delivery_service.dart';
 
 class NavigationScreen extends StatelessWidget {
   final OrderTrackingController controller;
@@ -86,7 +87,8 @@ class NavigationScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     const Text(
                       'Delivery Location',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style:
+                      TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -112,7 +114,6 @@ class NavigationScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton.icon(
-                        // ✅ FIXED: Check for null before navigating
                         onPressed: () => _openOSMNavigation(
                           context,
                           controller.deliveryLat,
@@ -135,7 +136,7 @@ class NavigationScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // Mark Delivered Button
+          // Mark Delivered Button (with OTP)
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -155,7 +156,8 @@ class NavigationScreen extends StatelessWidget {
                   SizedBox(width: 12),
                   Text(
                     'Mark as Delivered',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style:
+                    TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -223,14 +225,12 @@ class NavigationScreen extends StatelessWidget {
     }
   }
 
-  // ✅ FIXED: Proper null checking before navigation
   void _openOSMNavigation(
       BuildContext context,
       double? lat,
       double? lng,
       String destinationName,
       ) {
-    // Check if coordinates are null or invalid
     if (lat == null || lng == null || lat == 0.0 || lng == 0.0) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -242,7 +242,6 @@ class NavigationScreen extends StatelessWidget {
       return;
     }
 
-    // Navigate to OSM navigation screen
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -256,36 +255,102 @@ class NavigationScreen extends StatelessWidget {
   }
 
   Future<void> _markDelivered(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
+    // Step 0: Confirm they really want to complete delivery
+    final confirmStart = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Confirm Delivery'),
-        content: const Text('Have you delivered the order to the customer?'),
+        title: const Text('Start OTP Verification'),
+        content: const Text(
+          'We will send an OTP to the customer. Ask them to share it with you.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Not Yet'),
+            child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Yes, Delivered'),
+            child: const Text('Send OTP'),
           ),
         ],
       ),
     );
 
-    if (confirmed == true) {
-      final success = await controller.markDelivered();
+    if (confirmStart != true) return;
 
-      if (success && context.mounted) {
+    // Step 1: Generate OTP (backend sends SMS)
+    final otpResult = await controller.startOtpDelivery();
+    if (otpResult['success'] != true) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Order delivered successfully!'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Text(otpResult['message'] ?? 'Failed to generate OTP'),
+            backgroundColor: Colors.red,
           ),
         );
       }
+      return;
+    }
+
+    // Step 2: Ask partner to enter OTP received by customer
+    final otp = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        final TextEditingController otpController = TextEditingController();
+        return AlertDialog(
+          title: const Text('Enter OTP'),
+          content: TextField(
+            controller: otpController,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: '6-digit OTP',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () =>
+                  Navigator.pop(context, otpController.text.trim()),
+              child: const Text('Verify'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (otp == null || otp.isEmpty) return;
+
+    // Step 3: Verify OTP with backend
+    final verifyResult = await DeliveryService.verifyDeliveryOtp(
+      orderId: controller.orderId,
+      otp: otp,
+    );
+
+    if (verifyResult['success'] != true) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(verifyResult['message'] ?? 'Invalid OTP'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    // Step 4: Mark as delivered (after OTP)
+    final success = await controller.markDeliveredAfterOtp();
+    if (success && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Order delivered successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
     }
   }
 }
