@@ -4,7 +4,6 @@ import 'package:deliveryui/screens/profile/verification/otp_verification_page.da
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../settings/settings_page.dart';
 import 'profile_controller.dart';
 import 'widgets/profile_header.dart';
 import 'widgets/logout_button.dart';
@@ -76,21 +75,6 @@ class _ProfilePageState extends State<ProfilePage> {
                                   color: Colors.white,
                                   fontSize: 28,
                                   fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const SettingsPage(),
-                                    ),
-                                  );
-                                },
-                                icon: const Icon(
-                                  Icons.settings_outlined,
-                                  color: Colors.white,
-                                  size: 26,
                                 ),
                               ),
                             ],

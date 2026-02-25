@@ -20,37 +20,66 @@ class OSMNavigationScreen extends StatefulWidget {
   State<OSMNavigationScreen> createState() => _OSMNavigationScreenState();
 }
 
+enum MapLayer { standard, terrain, satellite }
+
 class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     with SingleTickerProviderStateMixin {
   late MapController mapController;
-  late AnimationController _pulseController;
 
+  // State Variables
   GeoPoint? _currentLocation;
   RoadInfo? _roadInfo;
   bool _isMapReady = false;
   bool _isTracking = true;
   bool _isLoadingRoute = false;
+  bool _layersExpanded = false; // For the FAB menu
+
+  // Navigation Stats
   double _currentSpeed = 0.0;
   double _currentHeading = 0.0;
   double? _remainingDistanceKm;
+  double? _timeToArrivalSeconds; // derived from RoadInfo
+
+  // Arrival Logic
   bool _canTriggerArrival = false;
   bool _hasShownArrivalDialog = false;
+  MapLayer _currentLayer = MapLayer.standard;
 
   StreamSubscription<Position>? _positionStream;
 
+  // Design Constants
   static const Color primaryColor = Color(0xFF2563EB);
   static const Color accentColor = Color(0xFF10B981);
   static const Color darkText = Color(0xFF1F2937);
+  static const Color surfaceColor = Colors.white;
+
+  // Map Tile Configurations
+  static final Map<MapLayer, CustomTile> _layers = {
+    MapLayer.standard: CustomTile(
+      urlsServers: [TileURLs(url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png")],
+      sourceName: "OpenStreetMap",
+      tileExtension: ".png",
+    ),
+    MapLayer.terrain: CustomTile(
+      minZoomLevel: 2,
+      maxZoomLevel: 19,
+      urlsServers: [TileURLs(url: "https://a.tile.opentopomap.org/{z}/{x}/{y}.png")],
+      sourceName: "OpenTopoMap",
+      tileExtension: ".png",
+    ),
+    MapLayer.satellite: CustomTile(
+      minZoomLevel: 2,
+      maxZoomLevel: 19,
+      urlsServers: [TileURLs(url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}")],
+      sourceName: "Esri World Imagery",
+      tileExtension: ".png",
+    ),
+  };
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
 
     mapController = MapController(
       initMapWithUserPosition: const UserTrackingOption(
@@ -59,10 +88,10 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
       ),
     );
 
+    // Grace period to prevent instant arrival triggering if GPS drifts at start
     Future.delayed(const Duration(seconds: 10), () {
       if (mounted) {
         setState(() => _canTriggerArrival = true);
-        debugPrint("⏰ Grace period over. Arrival detection enabled.");
       }
     });
   }
@@ -71,44 +100,56 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
   void dispose() {
     _positionStream?.cancel();
     mapController.dispose();
-    _pulseController.dispose();
     super.dispose();
   }
 
   Future<void> _onMapReady(bool isReady) async {
     if (!isReady) return;
 
-    if (mounted) {
-      setState(() => _isMapReady = true);
-    }
+    if (mounted) setState(() => _isMapReady = true);
 
     try {
+      // 1. Permission Check
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          debugPrint("❌ Location permission denied");
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          if(mounted) _showErrorSnackBar("Location permission is required for navigation.");
           return;
         }
       }
 
+      // 2. Initial Position
       Position pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        desiredAccuracy: LocationAccuracy.bestForNavigation,
       );
 
       if (!mounted) return;
 
-      _currentLocation = GeoPoint(latitude: pos.latitude, longitude: pos.longitude);
+      setState(() {
+        _currentLocation = GeoPoint(latitude: pos.latitude, longitude: pos.longitude);
+      });
 
+      // 3. Add Destination Marker
       await mapController.addMarker(
         GeoPoint(latitude: widget.destinationLat, longitude: widget.destinationLng),
         markerIcon: const MarkerIcon(
-          icon: Icon(Icons.location_on, color: Colors.red, size: 60),
+          icon: Icon(
+            Icons.location_on,
+            color: Colors.redAccent,
+            size: 64, // Slightly smaller for better precision look
+          ),
         ),
       );
 
+      // 4. Start Route & Tracking
       await _calculateRoute();
       _startTracking();
+
+      // 5. Initial Zoom
+      await mapController.setZoom(zoomLevel: 17);
+
     } catch (e) {
       debugPrint("❌ Map Init Error: $e");
     }
@@ -118,27 +159,34 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     if (_currentLocation == null) return;
     if (mounted) setState(() => _isLoadingRoute = true);
 
+    // Remove old road if exists (to avoid duplicates during reroute)
+    try {
+      await mapController.removeLastRoad();
+    } catch (_) {}
+
     try {
       _roadInfo = await mapController.drawRoad(
         _currentLocation!,
         GeoPoint(latitude: widget.destinationLat, longitude: widget.destinationLng),
         roadType: RoadType.car,
         roadOption: const RoadOption(
-          roadWidth: 10,
+          roadWidth: 12, // Thicker road for visibility
           roadColor: primaryColor,
-          roadBorderWidth: 3,
+          roadBorderWidth: 4,
           roadBorderColor: Colors.white,
           zoomInto: true,
         ),
       );
 
-      if (_roadInfo?.distance != null && mounted) {
+      if (_roadInfo != null && mounted) {
         setState(() {
           _remainingDistanceKm = _roadInfo!.distance;
+          _timeToArrivalSeconds = _roadInfo!.duration; // Use actual route duration
         });
       }
     } catch (e) {
       debugPrint("❌ Route Error: $e");
+      if(mounted) _showErrorSnackBar("Could not calculate route.");
     } finally {
       if (mounted) setState(() => _isLoadingRoute = false);
     }
@@ -147,7 +195,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
   void _startTracking() {
     const settings = LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 5,
+      distanceFilter: 5, // Update every 5 meters
     );
 
     _positionStream = Geolocator.getPositionStream(locationSettings: settings)
@@ -158,9 +206,10 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
 
       setState(() {
         _currentLocation = newGeo;
-        _currentSpeed = pos.speed * 3.6;
+        _currentSpeed = pos.speed * 3.6; // Convert m/s to km/h
         _currentHeading = pos.heading;
 
+        // Simple straight line distance for UI updates between route recalcs
         final distMeters = Geolocator.distanceBetween(
           pos.latitude,
           pos.longitude,
@@ -168,27 +217,58 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
           widget.destinationLng,
         );
         _remainingDistanceKm = distMeters / 1000;
+
+        // Adjust time linearly based on speed if we have a previous estimate
+        if (_timeToArrivalSeconds != null && _currentSpeed > 5) {
+          // Basic decay of time
+          _timeToArrivalSeconds = (_remainingDistanceKm! / (_currentSpeed / 3600));
+        }
       });
 
+      // Arrival Detection
       if (!_hasShownArrivalDialog &&
           _canTriggerArrival &&
           _remainingDistanceKm != null &&
-          _remainingDistanceKm! < 0.05) {
+          _remainingDistanceKm! < 0.05) { // 50 meters
         _showArrivalDialog();
       }
 
+      // Map Tracking Camera Update
       if (_isTracking && _isMapReady) {
         mapController.moveTo(newGeo, animate: true);
+        // Optional: Rotate map to heading if speed is sufficient
+        if (_currentSpeed > 10) {
+          // mapController.rotateMapCamera(_currentHeading); // Uncomment if plugin supports rotation seamlessly
+        }
       }
     });
   }
 
   void _recenter() {
-    if (mounted) setState(() => _isTracking = true);
+    setState(() => _isTracking = true);
     if (_currentLocation != null) {
       mapController.moveTo(_currentLocation!, animate: true);
       mapController.setZoom(zoomLevel: 18);
     }
+  }
+
+  Future<void> _switchLayer(MapLayer layer) async {
+    if (_currentLayer == layer || !_isMapReady) return;
+    try {
+      await mapController.changeTileLayer(tileLayer: _layers[layer]!);
+      setState(() {
+        _currentLayer = layer;
+        _layersExpanded = false; // Close menu after selection
+      });
+    } catch (e) {
+      debugPrint("❌ Layer switch error: $e");
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
   }
 
   void _showArrivalDialog() {
@@ -199,46 +279,49 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Column(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        contentPadding: const EdgeInsets.all(24),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle, color: accentColor, size: 60),
-            SizedBox(height: 10),
-            Text("You have arrived!",
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: accentColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.check_rounded, color: accentColor, size: 48),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              "You have arrived!",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: darkText),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Destination: ${widget.destinationName}",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx); // Close dialog
+                  Navigator.pop(context); // Exit screen
+                },
+                child: const Text("Complete Trip", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            )
           ],
         ),
-        content: Text(
-          "You are at ${widget.destinationName}",
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 16),
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pop(context);
-              },
-              child: const Text(
-                "Complete Delivery",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          )
-        ],
       ),
     );
   }
@@ -248,6 +331,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     return Scaffold(
       body: Stack(
         children: [
+          // 1. Map Layer
           OSMFlutter(
             controller: mapController,
             onMapIsReady: _onMapReady,
@@ -264,10 +348,18 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
               ),
               userLocationMarker: UserLocationMaker(
                 personMarker: const MarkerIcon(
-                  icon: Icon(Icons.navigation, color: primaryColor, size: 60),
+                  icon: Icon(
+                    Icons.navigation, // Use navigation arrow for clearer heading
+                    color: primaryColor,
+                    size: 48,
+                  ),
                 ),
                 directionArrowMarker: const MarkerIcon(
-                  icon: Icon(Icons.navigation, color: primaryColor, size: 60),
+                  icon: Icon(
+                    Icons.navigation,
+                    color: primaryColor,
+                    size: 48,
+                  ),
                 ),
               ),
               roadConfiguration: const RoadOption(
@@ -276,143 +368,108 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
             ),
           ),
 
+          // 2. Top Navigation Bar (Floating Pill)
           Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
+            top: MediaQuery.of(context).padding.top + 16,
             left: 16,
             right: 16,
-            child: _buildTopCard(),
+            child: _buildTopBar(),
           ),
 
+          // 3. Right Side Controls (Layers & Reroute)
           Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: _buildBottomCard(),
+            top: 120,
+            right: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _buildLayerControl(),
+                const SizedBox(height: 12),
+                FloatingActionButton.small(
+                  heroTag: "reroute",
+                  backgroundColor: surfaceColor,
+                  foregroundColor: primaryColor,
+                  tooltip: "Recalculate Route",
+                  onPressed: _calculateRoute,
+                  child: _isLoadingRoute
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.alt_route_rounded),
+                ),
+              ],
+            ),
           ),
 
+          // 4. Bottom Controls (Recenter & Speed)
           Positioned(
-            bottom: 220,
+            bottom: 240, // Just above the bottom sheet
             right: 16,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 FloatingActionButton(
                   heroTag: "recenter",
-                  backgroundColor: Colors.white,
+                  backgroundColor: surfaceColor,
                   child: Icon(
                     _isTracking ? Icons.gps_fixed : Icons.gps_not_fixed,
                     color: _isTracking ? primaryColor : Colors.grey,
                   ),
                   onPressed: _recenter,
                 ),
-                const SizedBox(height: 12),
-                if (_currentSpeed > 2)
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.15),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        )
-                      ],
-                    ),
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _currentSpeed.toStringAsFixed(0),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                              color: darkText,
-                              height: 1.0,
-                            ),
-                          ),
-                          const Text(
-                            "km/h",
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey,
-                              height: 1.0,
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  )
+                const SizedBox(height: 16),
+                if (_currentSpeed > 2) _buildSpeedBadge(),
               ],
             ),
           ),
 
-          if (_isLoadingRoute || !_isMapReady)
-            Container(
-              color: Colors.white.withOpacity(0.8),
-              child: const Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(color: primaryColor),
-                    SizedBox(height: 16),
-                    Text(
-                      "Loading Map...",
-                      style: TextStyle(
-                        color: darkText,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          // 5. Bottom Info Sheet
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: _buildBottomCard(),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTopCard() {
+  // --- Widget Builders ---
+
+  Widget _buildTopBar() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(50),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 5),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.arrow_back, color: Colors.black87),
+          IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.grey[100],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   "Navigating to",
                   style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[600],
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
@@ -421,88 +478,198 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: darkText,
-                    fontSize: 16,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
           ),
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+                color: Colors.red[50],
+                borderRadius: BorderRadius.circular(12)
+            ),
+            child: const Icon(Icons.location_on, size: 16, color: Colors.red),
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLayerControl() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (_layersExpanded) ...[
+          _layerOption(MapLayer.satellite, Icons.satellite_alt),
+          const SizedBox(height: 8),
+          _layerOption(MapLayer.terrain, Icons.terrain),
+          const SizedBox(height: 8),
+          _layerOption(MapLayer.standard, Icons.map),
+          const SizedBox(height: 8),
+        ],
+        FloatingActionButton.small(
+          heroTag: "layers_toggle",
+          backgroundColor: surfaceColor,
+          foregroundColor: darkText,
+          onPressed: () => setState(() => _layersExpanded = !_layersExpanded),
+          child: Icon(_layersExpanded ? Icons.close : Icons.layers),
+        ),
+      ],
+    );
+  }
+
+  Widget _layerOption(MapLayer layer, IconData icon) {
+    final isSelected = _currentLayer == layer;
+    return GestureDetector(
+      onTap: () => _switchLayer(layer),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: isSelected ? primaryColor : surfaceColor,
+          shape: BoxShape.circle,
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: isSelected ? Colors.white : Colors.grey[700],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSpeedBadge() {
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.grey[100]!, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            _currentSpeed.toStringAsFixed(0),
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 22,
+              color: darkText,
+              height: 1.0,
+            ),
+          ),
+          const Text(
+            "km/h",
+            style: TextStyle(fontSize: 10, color: Colors.grey, height: 1.0),
+          )
         ],
       ),
     );
   }
 
   Widget _buildBottomCard() {
+    // Determine Time String
+    String timeStr = "--";
+    DateTime? arrivalTime;
+
+    if (_timeToArrivalSeconds != null) {
+      final int minutes = (_timeToArrivalSeconds! / 60).round();
+      arrivalTime = DateTime.now().add(Duration(seconds: _timeToArrivalSeconds!.toInt()));
+
+      if (minutes < 60) {
+        timeStr = "$minutes min";
+      } else {
+        final hrs = minutes ~/ 60;
+        final mins = minutes % 60;
+        timeStr = "${hrs}h ${mins}m";
+      }
+    } else if (_remainingDistanceKm != null) {
+      // Fallback if API didn't return time
+      final minutes = (_remainingDistanceKm! / 40 * 60).round(); // Assume 40km/h avg city
+      timeStr = "~$minutes min";
+      arrivalTime = DateTime.now().add(Duration(minutes: minutes));
+    }
+
+    final arrivalStr = arrivalTime != null
+        ? "${arrivalTime.hour.toString().padLeft(2, '0')}:${arrivalTime.minute.toString().padLeft(2, '0')}"
+        : "--:--";
+
     final distStr = _remainingDistanceKm != null
         ? "${_remainingDistanceKm!.toStringAsFixed(1)} km"
         : "--";
 
-    final minutes = _remainingDistanceKm != null
-        ? (_remainingDistanceKm! / 30 * 60).round()
-        : 0;
-    final timeStr = minutes >= 60
-        ? "${(minutes / 60).toStringAsFixed(1)} hr"
-        : "$minutes min";
-
-    final now = DateTime.now();
-    final arrivalTime = now.add(Duration(minutes: minutes));
-    final arrivalStr = "${arrivalTime.hour}:${arrivalTime.minute.toString().padLeft(2, '0')}";
-
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: surfaceColor,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 20,
-            offset: Offset(0, -5),
-          ),
+          BoxShadow(color: Colors.black12, blurRadius: 20, offset: Offset(0, -5)),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: Colors.grey[300],
-              borderRadius: BorderRadius.circular(2),
+          // Drag Handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
+
+          // Stats Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildStatItem(Icons.access_time_filled, timeStr, "Est. Time"),
+              _buildStatItem(Icons.timer_outlined, timeStr, "Est. Time", primaryColor),
               Container(width: 1, height: 40, color: Colors.grey[200]),
-              _buildStatItem(Icons.near_me, distStr, "Distance"),
+              _buildStatItem(Icons.directions_outlined, distStr, "Distance", darkText),
               Container(width: 1, height: 40, color: Colors.grey[200]),
-              _buildStatItem(Icons.schedule, arrivalStr, "Arrival"),
+              _buildStatItem(Icons.schedule, arrivalStr, "Arrival", darkText),
             ],
           ),
+
           const SizedBox(height: 24),
+
+          // Action Button
           SizedBox(
             width: double.infinity,
-            height: 50,
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.check_circle_outline),
-              label: const Text(
-                "Arrived at Location",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+            height: 54,
+            child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: accentColor,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 4,
+                shadowColor: accentColor.withOpacity(0.4),
               ),
               onPressed: _hasShownArrivalDialog ? null : _showArrivalDialog,
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle_outline),
+                  SizedBox(width: 8),
+                  Text("Force Arrival", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ],
+              ),
             ),
           ),
         ],
@@ -510,20 +677,22 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
     );
   }
 
-  Widget _buildStatItem(IconData icon, String value, String label) {
+  Widget _buildStatItem(IconData icon, String value, String label, Color color) {
     return Column(
       children: [
         Row(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Icon(icon, size: 18, color: primaryColor),
+            Icon(icon, size: 20, color: Colors.grey[400]),
             const SizedBox(width: 6),
             Text(
               value,
-              style: const TextStyle(
-                fontSize: 18,
+              style: TextStyle(
+                fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: darkText,
+                color: color,
+                letterSpacing: -0.5,
               ),
             ),
           ],
@@ -531,11 +700,7 @@ class _OSMNavigationScreenState extends State<OSMNavigationScreen>
         const SizedBox(height: 4),
         Text(
           label,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
+          style: TextStyle(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.w500),
         ),
       ],
     );

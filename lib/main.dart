@@ -15,12 +15,12 @@ import 'package:deliveryui/screens/profile/profile_controller.dart';
 import 'package:deliveryui/screens/splash/splash_screen.dart';
 import 'package:deliveryui/screens/kyc/kyc_page.dart';
 import 'core/locale_provider.dart';
+import 'core/theme/app_theme.dart';
 import 'providers/settings_provider.dart';
+
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // ✅ Start app immediately, load preferences asynchronously
   runApp(const DeliveryBoyApp());
 }
 
@@ -31,12 +31,10 @@ class DeliveryBoyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // ✅ Initialize providers lazily - only when needed
         ChangeNotifierProvider(create: (_) => SettingsProvider()..init()),
         ChangeNotifierProvider(create: (_) => LocaleProvider()),
         ChangeNotifierProvider(create: (_) => NavController()),
         ChangeNotifierProvider(create: (_) => AuthController()),
-
         ChangeNotifierProxyProvider<AuthController, HomeController>(
           create: (_) => HomeController(),
           update: (ctx, auth, previous) {
@@ -48,13 +46,12 @@ class DeliveryBoyApp extends StatelessWidget {
             return previous;
           },
         ),
-
         ChangeNotifierProxyProvider<AuthController, DeliveriesController>(
-          create: (ctx) => DeliveriesController(authController: ctx.read<AuthController>()),
+          create: (ctx) =>
+              DeliveriesController(authController: ctx.read<AuthController>()),
           update: (ctx, auth, previous) =>
           previous ?? DeliveriesController(authController: auth),
         ),
-
         ChangeNotifierProvider(create: (_) => ProfileController()),
         ChangeNotifierProvider(create: (_) => EarningsController()),
       ],
@@ -66,24 +63,10 @@ class DeliveryBoyApp extends StatelessWidget {
             locale: localeProvider.locale,
             themeMode: settingsProvider.themeMode,
 
-            theme: ThemeData(
-              brightness: Brightness.light,
-              primarySwatch: Colors.green,
-              useMaterial3: true,
-              scaffoldBackgroundColor: const Color(0xFFF8F9FA),
-              appBarTheme: const AppBarTheme(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                elevation: 0,
-              ),
-              cardTheme: const CardThemeData(
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                ),
-              ),
-            ),
+            // UPDATED: use central light theme
+            theme: AppTheme.lightTheme,
 
+            // Keep your existing dark theme (optional to refactor later)
             darkTheme: ThemeData(
               brightness: Brightness.dark,
               primarySwatch: Colors.green,
@@ -103,7 +86,6 @@ class DeliveryBoyApp extends StatelessWidget {
               ),
             ),
 
-            // ✅ Load async data in splash screen
             home: const SplashScreen(),
             routes: {
               '/home': (context) => const BottomNav(),
