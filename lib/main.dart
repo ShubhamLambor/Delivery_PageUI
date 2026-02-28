@@ -61,30 +61,10 @@ class DeliveryBoyApp extends StatelessWidget {
             title: 'Tiffinity Delivery Partner',
             debugShowCheckedModeBanner: false,
             locale: localeProvider.locale,
-            themeMode: settingsProvider.themeMode,
 
-            // UPDATED: use central light theme
+            // ✅ FORCED LIGHT MODE
+            themeMode: ThemeMode.light,
             theme: AppTheme.lightTheme,
-
-            // Keep your existing dark theme (optional to refactor later)
-            darkTheme: ThemeData(
-              brightness: Brightness.dark,
-              primarySwatch: Colors.green,
-              useMaterial3: true,
-              scaffoldBackgroundColor: const Color(0xFF121212),
-              appBarTheme: const AppBarTheme(
-                backgroundColor: Color(0xFF1F1F1F),
-                foregroundColor: Colors.white,
-                elevation: 0,
-              ),
-              cardTheme: const CardThemeData(
-                color: Color(0xFF1E1E1E),
-                elevation: 2,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                ),
-              ),
-            ),
 
             home: const SplashScreen(),
             routes: {

@@ -152,23 +152,31 @@ class DeliveriesController extends ChangeNotifier {
 
     final updated = DeliveryModel(
       id: delivery.id,
+      orderId: delivery.orderId,
       customerName: delivery.customerName,
+      customerPhone: delivery.customerPhone,
       item: delivery.item,
       address: delivery.address,
+      deliveryAddress: delivery.deliveryAddress,
       latitude: delivery.latitude,
       longitude: delivery.longitude,
+      pickupLatitude: delivery.pickupLatitude,
+      pickupLongitude: delivery.pickupLongitude,
       eta: delivery.eta,
       amount: delivery.amount,
+      totalAmount: delivery.totalAmount,
       time: delivery.time,
-      status: newStatus, // UI-normalized status
+      status: newStatus,
+      assignmentStatus: delivery.assignmentStatus, // ⬅ important
       messName: delivery.messName,
       messAddress: delivery.messAddress,
       messPhone: delivery.messPhone,
-      // ✅ Preserve distance fields
+      paymentMethod: delivery.paymentMethod,
       distBoyToMess: delivery.distBoyToMess,
       distMessToCust: delivery.distMessToCust,
       totalDistance: delivery.totalDistance,
     );
+
 
     _repo.addOrUpdateOrder(updated);
     notifyListeners();

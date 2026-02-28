@@ -1,230 +1,82 @@
+// lib/screens/delivery/waiting_for_order_screen.dart
 import 'package:flutter/material.dart';
-import '../order_tracking_controller.dart';
+import '../../../models/delivery_model.dart';
 
 class WaitingForOrderScreen extends StatelessWidget {
-  final OrderTrackingController controller;
+  final DeliveryModel order;
+  final bool isUpdating;
+  final VoidCallback onNavigateToMess;
+  final Future<void> Function() onReachedPickup;
 
   const WaitingForOrderScreen({
-    Key? key,
-    required this.controller,
-  }) : super(key: key);
+    super.key,
+    required this.order,
+    required this.isUpdating,
+    required this.onNavigateToMess,
+    required this.onReachedPickup,
+  });
+
+  bool get _canReachPickup {
+    final s = order.status.toLowerCase();
+    final a = order.assignmentStatus.toLowerCase();
+    return (s == 'confirmed' || s == 'ready') &&
+        (a == 'accepted' || a == 'assigned'); // ✅ Now allows 'ready' state
+  }
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+    final canReachPickup = _canReachPickup;
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const SizedBox(height: 40),
-
-          // Animated cooking icon
-          Container(
-            width: 150,
-            height: 150,
-            decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.restaurant_menu,
-              size: 80,
-              color: Colors.orange,
-            ),
-          ),
-
-          const SizedBox(height: 32),
-
-          const Text(
-            'Order Being Prepared',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-
-          const SizedBox(height: 12),
-
           Text(
-            'Waiting for ${controller.messName} to prepare the order',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey[600],
-            ),
+            order.messName ?? 'Pickup location',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
-
-          const SizedBox(height: 40),
-
-          // Order details card
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Mess Info
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.store, color: Colors.orange),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Mess/Restaurant',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            controller.messName,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-
-                const Divider(height: 32),
-
-                // Order Items
-                const Text(
-                  'Order Items',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                ...controller.items.map((item) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.orange,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            item['name'] ?? '',
-                            style: const TextStyle(fontSize: 14),
-                          ),
-                        ),
-                        Text(
-                          'x${item['quantity']}',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }).toList(),
-
-                const Divider(height: 24),
-
-                // Total Amount
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Total Amount',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      '₹${controller.orderAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+          const SizedBox(height: 4),
+          Text(
+            order.messAddress ?? '',
+            style: const TextStyle(color: Colors.grey),
           ),
-
-          const SizedBox(height: 24),
-
-          // Info card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, color: Colors.blue, size: 24),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'You will be notified when the order is ready for pickup',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[700],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: 16),
+          Text(
+            canReachPickup
+                ? 'Navigate to pickup, then tap when you reach the kitchen.'
+                : 'Pickup already marked. Waiting for next step.',
+            style: const TextStyle(fontSize: 14),
           ),
-
-          const SizedBox(height: 24),
-
-          // Refresh button
+          const Spacer(),
           SizedBox(
             width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => controller.loadOrderDetails(controller.orderId),
-              icon: const Icon(Icons.refresh),
-              label: const Text('Refresh Status'),
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                side: const BorderSide(color: Colors.orange),
-                foregroundColor: Colors.orange,
-              ),
+            child: ElevatedButton.icon(
+              onPressed: isUpdating ? null : onNavigateToMess,
+              icon: const Icon(Icons.navigation),
+              label: const Text('Navigate to Mess'),
             ),
           ),
+          const SizedBox(height: 12),
+          if (canReachPickup) // 🔑 only show button when allowed
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: isUpdating
+                    ? null
+                    : () async {
+                  if (!_canReachPickup) return; // double-check guard
+                  await onReachedPickup();       // calls reached_pickup once
+                },
+                child: isUpdating
+                    ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : const Text('Reached Pickup'),
+              ),
+            ),
         ],
       ),
     );

@@ -33,6 +33,7 @@ class DeliveryService {
         encoding: Encoding.getByName('utf-8'),
         body: {
           'action': action,
+          // PHP expects: $_POST['orderid'], $_POST['deliverypartnerid']
           'orderid': orderId,
           'deliverypartnerid': deliveryPartnerId,
           if (reason != null) 'reason': reason,
@@ -94,7 +95,24 @@ class DeliveryService {
     }
   }
 
-  /// Get active deliveries for delivery partner
+  /// Public wrapper so controllers can call a generic status update
+  static Future<Map<String, dynamic>> updateOrderStatus({
+    required String action,
+    required String orderId,
+    required String deliveryPartnerId,
+    String? reason,
+    String? notes,
+  }) async {
+    return _updateStatus(
+      action: action,
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+      reason: reason,
+      notes: notes,
+    );
+  }
+
+  /// Get active deliveries for delivery partner (parsed to models)
   static Future<List<DeliveryModel>> getActiveDeliveries(
       String partnerId,
       ) async {
@@ -121,7 +139,7 @@ class DeliveryService {
 
       if (response.statusCode == 200) {
         try {
-          // 🔑 Strip any garbage before the JSON
+          // strip garbage before JSON if any
           final raw = response.body;
           final start = raw.indexOf('{');
           if (start < 0) {
@@ -166,7 +184,9 @@ class DeliveryService {
     }
   }
 
-  /// 1. Accept Order
+  // ===== DELIVERY LIFE CYCLE ACTIONS (MAPPED TO PHP) =====
+
+  /// 1. Accept Order -> action = 'accept'
   static Future<Map<String, dynamic>> acceptOrder({
     required String orderId,
     required String deliveryPartnerId,
@@ -179,7 +199,7 @@ class DeliveryService {
     );
   }
 
-  /// 2. Reject Order
+  /// 2. Reject / Cancel Order
   static Future<Map<String, dynamic>> rejectOrder({
     required String orderId,
     required String deliveryPartnerId,
@@ -187,66 +207,54 @@ class DeliveryService {
   }) async {
     debugPrint('❌ Rejecting order...');
     return _updateStatus(
-      action: 'reject',
+      action: 'cancelled', // match backend if it uses this case
       orderId: orderId,
       deliveryPartnerId: deliveryPartnerId,
       reason: reason ?? 'No reason provided',
     );
   }
 
-  /// 3. Mark Reached Pickup Location
+  /// 3. Mark Reached Pickup Location -> action = 'reached_pickup'
   static Future<Map<String, dynamic>> markReachedPickup({
     required String orderId,
     required String deliveryPartnerId,
   }) async {
     debugPrint('📍 Marking reached pickup location...');
     return _updateStatus(
-      action: 'reached_pickup',
+      action: 'reached_pickup', // ✅ EXACTLY as in PHP
       orderId: orderId,
       deliveryPartnerId: deliveryPartnerId,
     );
   }
 
-  /// 4. Mark Order as Picked Up
+  /// 4. Mark Order as Picked Up -> action = 'picked_up'
   static Future<Map<String, dynamic>> markPickedUp({
     required String orderId,
     required String deliveryPartnerId,
   }) async {
     debugPrint('📦 Marking order as picked up...');
     return _updateStatus(
-      action: 'picked_up',
+      action: 'picked_up', // ✅ EXACTLY as in PHP
       orderId: orderId,
       deliveryPartnerId: deliveryPartnerId,
     );
   }
 
-  /// 5. Mark Order as In Transit / Out for Delivery
-  static Future<Map<String, dynamic>> markInTransit({
-    required String orderId,
-    required String deliveryPartnerId,
-  }) async {
-    debugPrint('🚚 Marking order as in transit...');
-    return _updateStatus(
-      action: 'in_transit',
-      orderId: orderId,
-      deliveryPartnerId: deliveryPartnerId,
-    );
-  }
-
-  /// 6. Mark Reached Delivery Location
+  /// 5. Mark Reached Delivery Location -> action = 'reached_delivery'
   static Future<Map<String, dynamic>> markReachedDelivery({
     required String orderId,
     required String deliveryPartnerId,
   }) async {
     debugPrint('📍 Marking reached delivery location...');
     return _updateStatus(
-      action: 'reached_delivery',
+      action: 'reached_delivery', // ✅ EXACTLY as in PHP
       orderId: orderId,
       deliveryPartnerId: deliveryPartnerId,
     );
   }
 
-  /// 7. Mark Order as Delivered
+
+  /// 6. Mark Order as Delivered (after OTP) -> action = 'delivered'
   static Future<Map<String, dynamic>> markDelivered({
     required String orderId,
     required String deliveryPartnerId,
@@ -261,7 +269,20 @@ class DeliveryService {
     );
   }
 
-  /// 8. Cancel Order
+  /// Convenience wrapper for in-transit used by HomePage
+  static Future<Map<String, dynamic>> markInTransit({
+    required String orderId,
+    required String deliveryPartnerId,
+  }) async {
+    debugPrint('🚚 Marking order as in transit...');
+    return _updateStatus(
+      action: 'intransit',
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+    );
+  }
+
+  /// Optional: Cancel Order explicitly -> action = 'cancelled'
   static Future<Map<String, dynamic>> cancelOrder({
     required String orderId,
     required String deliveryPartnerId,
@@ -276,18 +297,7 @@ class DeliveryService {
     );
   }
 
-  /// 9. Start Delivery (When leaving pickup location)
-  static Future<Map<String, dynamic>> startDelivery({
-    required String orderId,
-    required String deliveryPartnerId,
-  }) async {
-    debugPrint('🚀 Starting delivery...');
-    return _updateStatus(
-      action: 'start_delivery',
-      orderId: orderId,
-      deliveryPartnerId: deliveryPartnerId,
-    );
-  }
+  // ===== POLLING & LISTING HELPERS =====
 
   /// ✅ Check for pending assignments for delivery partner
   static Future<Map<String, dynamic>> checkPendingAssignments(
@@ -493,7 +503,7 @@ class DeliveryService {
     }
   }
 
-  /// Get single order details
+  /// Get single order details (raw JSON)
   static Future<Map<String, dynamic>> getOrderDetails({
     required String orderId,
     required String deliveryPartnerId,
@@ -552,6 +562,37 @@ class DeliveryService {
         'message': 'Failed to fetch order details',
       };
     }
+  }
+
+  /// Convenience wrapper for tracking controller:
+  /// fetchOrderDetails -> returns DeliveryModel instead of raw map
+  static Future<Map<String, dynamic>> fetchOrderDetails(
+      String orderId,
+      String deliveryPartnerId,
+      ) async {
+    final result = await getOrderDetails(
+      orderId: orderId,
+      deliveryPartnerId: deliveryPartnerId,
+    );
+
+    if (result['success'] == true && result['order'] != null) {
+      try {
+        final orderJson = result['order'] as Map<String, dynamic>;
+        final model = DeliveryModel.fromJson(orderJson);
+        return {
+          'success': true,
+          'order': model,
+        };
+      } catch (e) {
+        debugPrint('⚠️ Parse DeliveryModel from order details failed: $e');
+        return {
+          'success': false,
+          'message': 'Invalid order data',
+        };
+      }
+    }
+
+    return result;
   }
 
   /// Get order history for delivery partner
@@ -625,7 +666,7 @@ class DeliveryService {
     }
   }
 
-  /// ✅ NEW: Get delivery history with filters (date range and status)
+  /// Get delivery history with filters
   static Future<Map<String, dynamic>> getDeliveryHistory({
     required String deliveryPartnerId,
     DateTime? startDate,
@@ -835,7 +876,7 @@ class DeliveryService {
   /// 🔐 Generate delivery OTP
   static Future<Map<String, dynamic>> generateDeliveryOtp({
     required String orderId,
-    String? customerId, // optional: only send if you need it
+    String? customerId,
   }) async {
     try {
       debugPrint('🔐 Generating OTP for order: $orderId');
@@ -869,7 +910,6 @@ class DeliveryService {
           final jsonData = jsonDecode(response.body);
 
           if (jsonData is Map<String, dynamic>) {
-            // 🧪 TEST ONLY: log OTP if backend sends it
             if (jsonData['success'] == true && jsonData['otp'] != null) {
               debugPrint(
                 '🧪 TEST OTP for $orderId: ${jsonData['otp']}',

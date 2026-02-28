@@ -1,165 +1,132 @@
-import 'dart:async';
+// lib/screens/delivery/order_tracking_screen.dart
 import 'package:deliveryui/screens/delivery/widgets/delivery_confirmation_screen.dart';
-import 'package:deliveryui/screens/delivery/widgets/navigation_screen.dart';
 import 'package:deliveryui/screens/delivery/widgets/order_status_stepper.dart';
 import 'package:deliveryui/screens/delivery/widgets/pickup_screen.dart';
 import 'package:deliveryui/screens/delivery/widgets/waiting_for_order_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'order_tracking_controller.dart';
+import '../map/osm_navigation_screen.dart';
+import '../../models/delivery_model.dart';
 
-class OrderTrackingScreen extends StatefulWidget {
+class OrderTrackingScreen extends StatelessWidget {
   final String orderId;
   final String deliveryPartnerId;
 
   const OrderTrackingScreen({
-    Key? key,
+    super.key,
     required this.orderId,
     required this.deliveryPartnerId,
-  }) : super(key: key);
-
-  @override
-  State<OrderTrackingScreen> createState() => _OrderTrackingScreenState();
-}
-
-class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
-  Timer? _refreshTimer;
-
-  @override
-  void initState() {
-    super.initState();
-    _startAutoRefresh();
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
-  }
-
-  /// ✅ Auto-refresh order details every 5 seconds
-  void _startAutoRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
-      }
-
-      final controller =
-      Provider.of<OrderTrackingController>(context, listen: false);
-
-      if (controller.orderStatus.toLowerCase() != 'delivered') {
-        debugPrint('🔄 Auto-refreshing order details...');
-        controller.loadOrderDetails(widget.orderId);
-      } else {
-        timer.cancel();
-        debugPrint('✅ Order delivered. Stopped auto-refresh.');
-      }
-    });
-  }
+  });
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
+    return ChangeNotifierProvider<OrderTrackingController>(
       create: (_) => OrderTrackingController(
-        orderId: widget.orderId,
-        deliveryPartnerId: widget.deliveryPartnerId,
-      )..loadOrderDetails(widget.orderId),
-      child: Consumer<OrderTrackingController>(
-        builder: (context, controller, _) {
-          if (controller.isLoading) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
+        orderId: orderId,
+        deliveryPartnerId: deliveryPartnerId,
+      )..loadOrderDetails(),
+      child: const _OrderTrackingView(),
+    );
+  }
+}
 
-          final status = controller.orderStatus.toLowerCase().trim();
-          final isDelivered = status == 'delivered';
+class _OrderTrackingView extends StatelessWidget {
+  const _OrderTrackingView();
 
-          return WillPopScope(
-            onWillPop: () async {
-              if (!isDelivered) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Complete this delivery before leaving the screen.',
-                    ),
-                    backgroundColor: Colors.red,
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-                return false; // 🔒 block back until delivered
-              }
-              return true; // ✅ allow back after delivered
-            },
-            child: Scaffold(
-              body: SafeArea(
-                child: Column(
-                  children: [
-                    OrderStatusStepper(
-                      currentStatus: controller.orderStatus,
-                    ),
-                    Expanded(
-                      child: _buildContentForStatus(controller),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+  @override
+  Widget build(BuildContext context) {
+    final controller = context.watch<OrderTrackingController>();
+
+    final order = controller.order;
+    final isLoading = controller.isLoading && order == null;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Order ${controller.orderId}'),
+      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : order == null
+          ? Center(
+        child: Text(controller.errorMessage ?? 'Order not found'),
+      )
+          : Column(
+        children: [
+          OrderStatusStepper(
+            status: controller.status,
+            assignmentStatus: controller.assignmentStatus,
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _buildStageScreen(context, controller, order),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildContentForStatus(OrderTrackingController controller) {
-    final status = controller.orderStatus.toLowerCase().trim();
-
-    // 🔍 CRITICAL DEBUG LINE - SEE WHAT STATUS IS ACTUALLY RETURNED
-    debugPrint('🔍🔍🔍 ROUTING SCREEN FOR STATUS: "$status" 🔍🔍🔍');
-
-    // ✅ STEP 1: After accept - Show PickupScreen with "Reached Pickup" slider
-    if (status == 'accepted' ||
-        status == 'confirmed' ||
-        status == 'assigned' ||
-        status == '') {
-      debugPrint('✅ Showing PickupScreen with "Reached Pickup" slider');
-      return PickupScreen(controller: controller);
+  Widget _buildStageScreen(
+      BuildContext context,
+      OrderTrackingController c,
+      DeliveryModel order,
+      ) {
+    // Final stage
+    if (c.isDelivered) {
+      return DeliveryConfirmationScreen(order: order);
     }
 
-    // ✅ STEP 2: After reaching mess OR order ready - Show PickupScreen with "Mark Picked Up" slider
-    if (status == 'at_pickup_location' ||
-        status == 'atpickuplocation' ||
-        status == 'reached_pickup' ||
-        status == 'reachedpickup' ||
-        status == 'ready' ||
-        status == 'ready_for_pickup' ||
-        status == 'waiting_for_order' ||
-        status == 'waiting_for_pickup') {
-      debugPrint('✅ Showing PickupScreen with "Mark Picked Up" slider');
-      return PickupScreen(controller: controller);
+    // Picked up / out_for_delivery stage
+    if (c.isPickedUp) {
+      return DeliveryConfirmationScreen(order: order);
     }
 
-    // ✅ STEP 3: When picked up - Show NavigationScreen
-    if (status == 'picked_up' ||
-        status == 'pickedup' ||
-        status == 'out_for_delivery' ||
-        status == 'outfordelivery' ||
-        status == 'in_transit' ||
-        status == 'intransit') {
-      debugPrint('✅ Showing NavigationScreen');
-      return NavigationScreen(controller: controller);
+    // At pickup: assignment_status == 'at_pickup'
+    if (c.isAtPickup) {
+      return PickupScreen(
+        order: order,
+        isUpdating: c.isUpdating,
+        // at_pickup already set in DB -> don't call reached_pickup again
+        onReachedPickup: () async {},
+        onPickedUp: () async {
+          await c.markPickedUp(); // picked_up
+        },
+        onNavigateToMess: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OSMNavigationScreen(
+                destinationLat: order.pickupLatitude!,
+                destinationLng: order.pickupLongitude!,
+                destinationName: order.messName ?? 'Pickup',
+              ),
+            ),
+          );
+        },
+      );
     }
 
-    // ✅ STEP 4: Delivered
-    if (status == 'delivered') {
-      debugPrint('✅ Showing DeliveryConfirmationScreen');
-      return DeliveryConfirmationScreen(controller: controller);
-    }
-
-    // ✅ DEFAULT: Unknown status - Show WaitingForOrderScreen
-    debugPrint(
-        '⚠️ Unknown status "$status" detected - showing WaitingForOrderScreen');
-    return WaitingForOrderScreen(controller: controller);
+    // Default: confirmed + accepted/assigned, not yet at pickup
+    return WaitingForOrderScreen(
+      order: order,
+      isUpdating: c.isUpdating,
+      onNavigateToMess: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OSMNavigationScreen(
+              destinationLat: order.pickupLatitude!,
+              destinationLng: order.pickupLongitude!,
+              destinationName: order.messName ?? 'Pickup',
+            ),
+          ),
+        );
+      },
+      onReachedPickup: () async {
+        // First and only place that calls reached_pickup
+        if (!c.isAtWaiting) return;
+        await c.markReachedPickup();
+      },
+    );
   }
 }

@@ -21,8 +21,7 @@ import '../../models/delivery_model.dart';
 
 // Widgets
 import 'widgets/current_delivery_card.dart';
-import 'widgets/new_order_card.dart';
-import 'widgets/upcoming_tile.dart';
+// Note: upcoming_tile.dart and new_order_card.dart are no longer imported here as they are removed from the UI.
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -33,18 +32,16 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   Timer? pollingTimer;
-  String? _lastShownOrderId;  // ✅ ADDED: Track shown popups
+  String? _lastShownOrderId;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // ✅ Check mounted before everything
       if (!mounted) return;
 
       requestLocationPermission();
 
-      // Get partner ID from AuthController
       final auth = context.read<AuthController>();
       final partnerId = auth.getCurrentUserId();
 
@@ -53,11 +50,9 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
-      // Initialize HomeController with partner ID
       final home = context.read<HomeController>();
       home.initialize(partnerId).then((_) {
         debugPrint('✅ HomeController initialized');
-        // ✅ FIXED: Check if widget is still mounted before starting polling
         if (mounted) {
           startPolling();
         }
@@ -67,9 +62,7 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  /// ✅ FIXED: Start polling with proper mounted checks
   void startPolling() {
-    // ✅ Check if widget is mounted first
     if (!mounted) {
       debugPrint('⚠️ Cannot start polling: Widget is unmounted');
       return;
@@ -86,7 +79,6 @@ class _HomePageState extends State<HomePage> {
     debugPrint('📡 Starting order polling for partner: $uid...');
 
     pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
-      // ✅ Check mounted before each iteration
       if (!mounted) {
         timer.cancel();
         debugPrint('⚠️ Stopping polling: Widget unmounted');
@@ -94,7 +86,7 @@ class _HomePageState extends State<HomePage> {
       }
 
       final home = context.read<HomeController>();
-      if (!home.isOnline) return; // skip when offline
+      if (!home.isOnline) return;
 
       try {
         final result = await DeliveryService.checkPendingAssignments(uid);
@@ -105,18 +97,11 @@ class _HomePageState extends State<HomePage> {
             assignment != null &&
             assignment is Map) {
           debugPrint('🆕 NEW ORDER DETECTED!');
-          debugPrint('   Order ID: ${assignment['order_id']}');
-          debugPrint('   Mess: ${assignment['mess_name']}');
-          debugPrint('   Amount: ${assignment['total_amount']}');
-          debugPrint('   Address: ${assignment['delivery_address']}');
 
-          // Stop polling while dialog is open
           timer.cancel();
 
-          // ✅ FIX: Cast Map to Map<String, dynamic>
           if (mounted) {
             await showNewOrderDialog(Map<String, dynamic>.from(assignment));
-            // ✅ Restart polling after dialog closes
             if (mounted) {
               startPolling();
             }
@@ -128,7 +113,6 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  /// Stop polling timer
   void stopPolling() {
     if (pollingTimer != null) {
       pollingTimer!.cancel();
@@ -137,7 +121,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// ✅ NEW: Pull-to-refresh functionality
   Future _handleRefresh() async {
     if (!mounted) return;
     debugPrint('🔄 Manual refresh triggered...');
@@ -146,7 +129,6 @@ class _HomePageState extends State<HomePage> {
     final deliveries = context.read<DeliveriesController>();
 
     try {
-      // Refresh all data in parallel
       await Future.wait([
         home.refresh(),
         deliveries.fetchDeliveries(),
@@ -167,8 +149,6 @@ class _HomePageState extends State<HomePage> {
           ),
         );
       }
-
-      debugPrint('✅ Manual refresh completed');
     } catch (e) {
       debugPrint('❌ Error during manual refresh: $e');
       if (mounted) {
@@ -189,7 +169,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Show new order dialog with Accept/Reject options (from polling)
   Future<void> showNewOrderDialog(Map<String, dynamic> assignment) async {
     if (!mounted) return;
 
@@ -209,7 +188,6 @@ class _HomePageState extends State<HomePage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -233,7 +211,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             const SizedBox(height: 20),
-            // Order Details
             _buildDetailRow(
               Icons.shopping_bag,
               'Order ID',
@@ -259,10 +236,8 @@ class _HomePageState extends State<HomePage> {
               assignment['total_amount']?.toString() ?? '0',
             ),
             const SizedBox(height: 24),
-            // Action Buttons
             Row(
               children: [
-                // Reject Button
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () async {
@@ -285,7 +260,6 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                // Accept Button
                 Expanded(
                   flex: 2,
                   child: ElevatedButton.icon(
@@ -316,24 +290,20 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// ✅ NEW: Show popup for orders detected in currentDelivery
-  /// ✅ NEW: Modern Bottom Sheet (No Timeout)
   void _showNewOrderPopup(DeliveryModel order) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      isDismissible: false, // User must click Accept or Reject to close
+      isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (ctx) => NewOrderSheet(
         order: order,
         onAccept: () async {
-          Navigator.pop(ctx); // Close sheet
+          Navigator.pop(ctx);
 
-          // Call existing accept logic
           await handleAcceptOrder(context, order.id);
 
-          // Navigate to tracking
           if (mounted) {
             final auth = context.read<AuthController>();
             final partnerId = auth.getCurrentUserId() ?? '';
@@ -357,8 +327,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
-  /// Build detail row widget
   Widget _buildDetailRow(IconData icon, String label, String value) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -395,10 +363,44 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Handle accept from dialog
   Future<void> _handleAcceptFromDialog(String orderId, String partnerId) async {
-    debugPrint('✅ Accepting order from dialog: $orderId');
     try {
+      final home = context.read<HomeController>();
+      final order = home.allDeliveries.firstWhere(
+            (d) => d.id == orderId,
+        orElse: () => throw Exception('Order not found'),
+      );
+
+      final currentAssignStatus = order.assignmentStatus.toLowerCase();
+
+      if (currentAssignStatus == 'accepted') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text('Order already assigned to you!'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OrderTrackingScreen(
+                orderId: orderId,
+                deliveryPartnerId: partnerId,
+              ),
+            ),
+          );
+        }
+        return;
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -445,27 +447,18 @@ class _HomePageState extends State<HomePage> {
             ),
           );
 
-          debugPrint('✅ Refreshing deliveries after accept...');
-
-          // Refresh deliveries
           try {
             final deliveriesController = context.read<DeliveriesController>();
             await deliveriesController.fetchDeliveries();
-            debugPrint('✅ DeliveriesController refreshed');
           } catch (e) {
             debugPrint('⚠️ DeliveriesController not found: $e');
           }
 
           final homeController = context.read<HomeController>();
           await homeController.fetchDeliveries();
-          debugPrint('✅ HomeController refreshed');
 
           if (mounted) {
             setState(() {});
-          }
-
-          // Navigate to OrderTrackingScreen
-          if (mounted) {
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -495,7 +488,6 @@ class _HomePageState extends State<HomePage> {
         }
       }
     } catch (e) {
-      debugPrint('❌ Error accepting order: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -519,9 +511,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Handle reject from dialog
   Future<void> _handleRejectFromDialog(String orderId, String partnerId) async {
-    debugPrint('❌ Rejecting order from dialog: $orderId');
     try {
       final result = await DeliveryService.rejectOrder(
         orderId: orderId,
@@ -533,8 +523,7 @@ class _HomePageState extends State<HomePage> {
         if (result['success'] == true) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content:
-              Text(result['message'] ?? 'Order rejected and reassigned'),
+              content: Text(result['message'] ?? 'Order rejected and reassigned'),
               backgroundColor: Colors.orange,
               duration: const Duration(seconds: 2),
             ),
@@ -550,7 +539,6 @@ class _HomePageState extends State<HomePage> {
         }
       }
     } catch (e) {
-      debugPrint('❌ Error rejecting order: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -567,12 +555,9 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Handle Mark as Picked Up
   void _handleMarkPickedUp(BuildContext context, String orderId) async {
     final auth = context.read<AuthController>();
     final partnerId = auth.getCurrentUserId() ?? '';
-
-    debugPrint('📦 Marking order as picked up: $orderId');
 
     try {
       final result = await DeliveryService.markPickedUp(
@@ -598,8 +583,7 @@ class _HomePageState extends State<HomePage> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content:
-              Text(result['message'] ?? 'Failed to mark as picked up'),
+              content: Text(result['message'] ?? 'Failed to mark as picked up'),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 3),
             ),
@@ -607,7 +591,6 @@ class _HomePageState extends State<HomePage> {
         }
       }
     } catch (e) {
-      debugPrint('❌ Error marking as picked up: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -619,12 +602,9 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Handle Mark as In Transit
   void _handleMarkInTransit(BuildContext context, String orderId) async {
     final auth = context.read<AuthController>();
     final partnerId = auth.getCurrentUserId() ?? '';
-
-    debugPrint('🚚 Marking order as in transit: $orderId');
 
     try {
       final result = await DeliveryService.markInTransit(
@@ -650,8 +630,7 @@ class _HomePageState extends State<HomePage> {
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content:
-              Text(result['message'] ?? 'Failed to mark as in transit'),
+              content: Text(result['message'] ?? 'Failed to mark as in transit'),
               backgroundColor: Colors.red,
               duration: const Duration(seconds: 3),
             ),
@@ -659,7 +638,6 @@ class _HomePageState extends State<HomePage> {
         }
       }
     } catch (e) {
-      debugPrint('❌ Error marking as in transit: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -671,9 +649,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  /// Handle Mark as Delivered
-  void _handleMarkDelivered(BuildContext context, String orderId) async {
-    // 0) Confirm final delivery intent
+  void _handleMarkDelivered(BuildContext context, String orderId, String? customerId) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -719,7 +695,6 @@ class _HomePageState extends State<HomePage> {
     final partnerId = auth.getCurrentUserId() ?? '';
 
     if (partnerId.isEmpty) {
-      debugPrint('❌ No partnerId when marking delivered');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('User not found. Please login again.'),
@@ -729,17 +704,13 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    debugPrint('✅ Starting OTP flow for order: $orderId');
-
     try {
-      // 1) Generate OTP (only orderId)
       final gen = await DeliveryService.generateDeliveryOtp(
         orderId: orderId,
-        // remove customerId from Dart & PHP signature if you had it
+        customerId: customerId,
       );
 
       if (gen['success'] != true) {
-        debugPrint('❌ Failed to generate OTP: ${gen['message']}');
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -751,7 +722,6 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
-      // 2) Ask rider to enter OTP
       final otpController = TextEditingController();
       final enteredOtp = await showModalBottomSheet<String>(
         context: context,
@@ -773,15 +743,15 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Ask the customer for the OTP from their app/SMS and enter it below.',
+                  'Ask the customer for the 4-digit OTP from their app/SMS and enter it below.',
                 ),
                 const SizedBox(height: 16),
                 TextField(
                   controller: otpController,
                   keyboardType: TextInputType.number,
-                  maxLength: 6,
+                  maxLength: 4,
                   decoration: const InputDecoration(
-                    labelText: 'OTP',
+                    labelText: '4-Digit OTP',
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -804,12 +774,8 @@ class _HomePageState extends State<HomePage> {
 
       if (!mounted) return;
 
-      if (enteredOtp == null || enteredOtp.isEmpty) {
-        debugPrint('ℹ️ OTP entry cancelled or empty.');
-        return;
-      }
+      if (enteredOtp == null || enteredOtp.isEmpty) return;
 
-      // 3) Verify OTP
       final verify = await DeliveryService.verifyDeliveryOtp(
         orderId: orderId,
         otp: enteredOtp,
@@ -855,7 +821,6 @@ class _HomePageState extends State<HomePage> {
         );
       }
     } catch (e) {
-      debugPrint('❌ Error in OTP delivery flow: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -867,14 +832,10 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-
-  /// Location Permission
   Future<void> requestLocationPermission() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      if (mounted) {
-        _showLocationServiceDialog();
-      }
+      if (mounted) _showLocationServiceDialog();
       return;
     }
 
@@ -882,17 +843,13 @@ class _HomePageState extends State<HomePage> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        if (mounted) {
-          _showPermissionDeniedDialog();
-        }
+        if (mounted) _showPermissionDeniedDialog();
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      if (mounted) {
-        _showPermissionPermanentlyDeniedDialog();
-      }
+      if (mounted) _showPermissionPermanentlyDeniedDialog();
       return;
     }
   }
@@ -959,7 +916,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Navigate to Mess
   Future<void> _navigateToMess() async {
     Navigator.push(
       context,
@@ -973,7 +929,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// ✅ FIXED: Handle Accept Order (from NewOrderCard)
   Future<void> handleAcceptOrder(BuildContext context, String orderId) async {
     final deliveriesController = context.read<DeliveriesController>();
 
@@ -991,14 +946,12 @@ class _HomePageState extends State<HomePage> {
           ),
         );
 
-        // Refresh to update currentDelivery
         final homeController = context.read<HomeController>();
         await Future.wait([
           deliveriesController.fetchDeliveries(),
           homeController.fetchDeliveries(),
         ]);
 
-        // Navigate to tracking screen
         final auth = context.read<AuthController>();
         final partnerId = auth.getCurrentUserId() ?? '';
 
@@ -1043,9 +996,6 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-
-
-  /// ✅ FIXED: Handle Reject Order (from NewOrderCard)
   Future<void> handleRejectOrder(BuildContext context, String orderId) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -1108,7 +1058,6 @@ class _HomePageState extends State<HomePage> {
     final auth = context.watch<AuthController>();
     final deliveriesController = context.watch<DeliveriesController>();
 
-    // Fallback to DeliveriesController counts if Home stats are zero
     final completed = home.completedCount == 0
         ? deliveriesController.completedCount
         : home.completedCount;
@@ -1122,17 +1071,12 @@ class _HomePageState extends State<HomePage> {
         : home.cancelledCount;
 
     final DeliveryModel? current = home.currentDelivery;
-    final List<DeliveryModel> upcoming = home.upcomingDeliveries;
-    final List<DeliveryModel> newOrders = deliveriesController.newOrders;
 
-    // ✅ NEW: Show popup for new orders that haven't been accepted yet
+    // Show popup for new orders that haven't been accepted yet
     if (current != null &&
         current.status == 'accepted' &&
         _lastShownOrderId != current.id) {
-
       _lastShownOrderId = current.id;
-
-      // Show dialog after build completes
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _showNewOrderPopup(current);
@@ -1140,7 +1084,6 @@ class _HomePageState extends State<HomePage> {
       });
     }
 
-    // Reset tracker when no current delivery
     if (current == null) {
       _lastShownOrderId = null;
     }
@@ -1186,7 +1129,6 @@ class _HomePageState extends State<HomePage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        // User Name & Date
                         Flexible(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1211,10 +1153,8 @@ class _HomePageState extends State<HomePage> {
                             ],
                           ),
                         ),
-                        // Action Icons
                         Row(
                           children: [
-                            // Chat Button
                             Container(
                               decoration: BoxDecoration(
                                 color: Colors.white.withOpacity(0.2),
@@ -1238,7 +1178,6 @@ class _HomePageState extends State<HomePage> {
                               ),
                             ),
                             const SizedBox(width: 8),
-                            // Profile Icon
                             Container(
                               padding: const EdgeInsets.all(2),
                               decoration: const BoxDecoration(
@@ -1259,7 +1198,6 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    // Swipe Toggle Button
                     _SwipeToggleButton(
                       isOnline: isOnline,
                       onToggle: home.isLoading ? null : home.toggleOnline,
@@ -1318,48 +1256,6 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // NEW ORDERS
-                      if (newOrders.isNotEmpty) ...[
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'New Orders',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.orange,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '${newOrders.length}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        ...newOrders.map((order) {
-                          return NewOrderCard(
-                            order: order,
-                            onAccept: () => handleAcceptOrder(context, order.id),
-                            onReject: () => handleRejectOrder(context, order.id),
-                          );
-                        }).toList(),
-                        const SizedBox(height: 24),
-                      ],
-
                       // ACTIVE DELIVERY
                       const Text(
                         'Active Delivery',
@@ -1374,8 +1270,6 @@ class _HomePageState extends State<HomePage> {
                           key: ValueKey('active_${current.id}'),
                           delivery: current,
                           onCall: () {
-                            debugPrint(
-                                '📞 Calling customer: ${current.customerName}');
                             ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                 content: Text('Call functionality coming soon!'),
@@ -1383,12 +1277,9 @@ class _HomePageState extends State<HomePage> {
                               ),
                             );
                           },
-                          onPickedUp: () =>
-                              _handleMarkPickedUp(context, current.id),
-                          onInTransit: () =>
-                              _handleMarkInTransit(context, current.id),
-                          onDelivered: () =>
-                              _handleMarkDelivered(context, current.id),
+                          onPickedUp: () => _handleMarkPickedUp(context, current.id),
+                          onInTransit: () => _handleMarkInTransit(context, current.id),
+                          onDelivered: () => _handleMarkDelivered(context, current.id, current.customerId),
                         )
                       else
                         _buildEmptyActiveDelivery(isOnline),
@@ -1404,55 +1295,8 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const SizedBox(height: 12),
                       _buildPickupCard(),
-                      const SizedBox(height: 24),
 
-                      // UPCOMING ORDERS
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text(
-                            'Upcoming Orders',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              '${upcoming.length}',
-                              style: const TextStyle(
-                                color: Colors.green,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (upcoming.isEmpty)
-                        Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Text(
-                              'No upcoming orders',
-                              style: TextStyle(color: Colors.grey[500]),
-                            ),
-                          ),
-                        )
-                      else
-                        Column(
-                          children: upcoming
-                              .map((d) => UpcomingTile(delivery: d))
-                              .toList(),
-                        ),
+                      // Removed "Upcoming Orders" completely
                       const SizedBox(height: 100),
                     ],
                   ),
@@ -1912,6 +1756,7 @@ class _SwipeToggleButtonState extends State<_SwipeToggleButton> {
     );
   }
 }
+
 // ---------------------------------------------------------
 // 🛠️ WIDGET: Modern New Order Bottom Sheet (No Timer)
 // ---------------------------------------------------------
@@ -2126,7 +1971,6 @@ class _NewOrderSheetState extends State<NewOrderSheet>
     );
   }
 
-  // ... (Keep _buildTimelineRow and _buildConnector exactly the same as before)
   Widget _buildTimelineRow({
     required IconData icon,
     required Color color,

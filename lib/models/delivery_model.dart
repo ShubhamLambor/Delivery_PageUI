@@ -2,6 +2,7 @@
 
 class DeliveryModel {
   final String id;
+  final String? customerId; // ✅ ADDED
   final String orderId;
   final String customerName;
   final String? customerPhone;
@@ -9,11 +10,11 @@ class DeliveryModel {
   final String address;
   final String? deliveryAddress;
 
-  // ✅ Customer Coordinates
+  // Customer Coordinates
   final double? latitude;
   final double? longitude;
 
-  // ✅ ADDED: Pickup (Mess) Coordinates
+  // Pickup (Mess) Coordinates
   final double? pickupLatitude;
   final double? pickupLongitude;
 
@@ -21,7 +22,13 @@ class DeliveryModel {
   final String amount;
   final String? totalAmount;
   final String time;
+
+  /// orders.status (accepted, confirmed, ready, out_for_delivery, delivered, ...)
   final String status;
+
+  /// delivery_assignments.status (assigned, accepted, at_pickup_location, picked_up, in_transit, ...)
+  final String assignmentStatus;
+
   final String? messName;
   final String? messAddress;
   final String? messPhone;
@@ -34,6 +41,7 @@ class DeliveryModel {
 
   DeliveryModel({
     required this.id,
+    this.customerId, // ✅ ADDED
     String? orderId,
     required this.customerName,
     this.customerPhone,
@@ -42,16 +50,14 @@ class DeliveryModel {
     this.deliveryAddress,
     this.latitude,
     this.longitude,
-
-    // ✅ Initialize new fields
     this.pickupLatitude,
     this.pickupLongitude,
-
     required this.eta,
     required this.amount,
     this.totalAmount,
     required this.time,
     required this.status,
+    required this.assignmentStatus,
     this.messName,
     this.messAddress,
     this.messPhone,
@@ -61,12 +67,26 @@ class DeliveryModel {
     required this.totalDistance,
   }) : orderId = orderId ?? id;
 
-  /// ✅ Parse from backend JSON
   factory DeliveryModel.fromJson(Map<String, dynamic> json) {
     final id = json['order_id']?.toString() ?? json['id']?.toString() ?? '';
 
+    // Order status
+    final rawOrderStatus = json['status']?.toString() ?? '';
+    final effectiveOrderStatus =
+    rawOrderStatus.isEmpty ? 'accepted' : rawOrderStatus;
+
+    // Assignment status from delivery_assignments.status
+    final rawAssignmentStatus = json['assignment_status']?.toString() ?? '';
+    final normalizedAssignmentStatus =
+    rawAssignmentStatus == 'at_pickup_location'
+        ? 'at_pickup'
+        : rawAssignmentStatus;
+    final effectiveAssignmentStatus =
+    normalizedAssignmentStatus.isEmpty ? 'assigned' : normalizedAssignmentStatus;
+
     return DeliveryModel(
       id: id,
+      customerId: json['customer_id']?.toString(), // ✅ ADDED
       orderId: id,
       customerName: json['customer_name']?.toString() ?? 'Customer',
       customerPhone: json['customer_phone']?.toString(),
@@ -75,32 +95,38 @@ class DeliveryModel {
           json['customer_address']?.toString() ??
           'Address pending',
       deliveryAddress: json['delivery_address']?.toString(),
-
-      // ✅ Parse Customer Coordinates
-      latitude: double.tryParse(json['delivery_latitude']?.toString() ?? json['latitude']?.toString() ?? ''),
-      longitude: double.tryParse(json['delivery_longitude']?.toString() ?? json['longitude']?.toString() ?? ''),
-
-      // ✅ Parse Pickup Coordinates
-      pickupLatitude: double.tryParse(json['pickup_latitude']?.toString() ?? ''),
-      pickupLongitude: double.tryParse(json['pickup_longitude']?.toString() ?? ''),
-
+      latitude: double.tryParse(
+        json['delivery_latitude']?.toString() ??
+            json['latitude']?.toString() ??
+            '',
+      ) ??
+          null,
+      longitude: double.tryParse(
+        json['delivery_longitude']?.toString() ??
+            json['longitude']?.toString() ??
+            '',
+      ) ??
+          null,
+      pickupLatitude:
+      double.tryParse(json['pickup_latitude']?.toString() ?? ''),
+      pickupLongitude:
+      double.tryParse(json['pickup_longitude']?.toString() ?? ''),
       eta: json['eta']?.toString() ?? '30 mins',
-      amount: json['total_amount']?.toString() ?? json['amount']?.toString() ?? '0',
-      totalAmount: json['total_amount']?.toString() ?? json['amount']?.toString(),
+      amount: json['total_amount']?.toString() ??
+          json['amount']?.toString() ??
+          '0',
+      totalAmount: json['total_amount']?.toString() ??
+          json['amount']?.toString(),
       time: json['order_time']?.toString() ??
           json['created_at']?.toString() ??
           json['time']?.toString() ??
           DateTime.now().toString(),
-
-      // ✅ FIX: Read 'status' first (order status), not 'assignment_status'
-      status: json['status']?.toString() ?? 'assigned',
-
+      status: effectiveOrderStatus,
+      assignmentStatus: effectiveAssignmentStatus,
       messName: json['mess_name']?.toString(),
       messAddress: json['mess_address']?.toString(),
       messPhone: json['mess_phone']?.toString(),
       paymentMethod: json['payment_method']?.toString() ?? 'cash',
-
-      // Parse distance fields
       distBoyToMess: json['dist_boy_to_mess']?.toString() ?? '0.00',
       distMessToCust: json['dist_mess_to_cust']?.toString() ?? '0.00',
       totalDistance: json['total_distance']?.toString() ?? '0.00',
@@ -108,26 +134,18 @@ class DeliveryModel {
   }
 
 
-  /// ✅ Helper method to get display-friendly status for UI
   String get displayStatus {
     switch (status.toLowerCase()) {
-      case 'assigned':
-      case 'pending_assignment':
-        return 'New';
-      case 'confirmed':
-        return 'Confirmed';
       case 'accepted':
         return 'Accepted';
+      case 'confirmed':
+        return 'Confirmed';
       case 'ready':
       case 'ready_for_pickup':
         return 'Ready';
-      case 'picked_up':
-      case 'pickedup':
-      case 'at_pickup_location':
-        return 'Picked Up';
+      case 'out_for_delivery':
       case 'in_transit':
       case 'intransit':
-      case 'out_for_delivery':
         return 'In Transit';
       case 'delivered':
       case 'completed':
@@ -140,23 +158,21 @@ class DeliveryModel {
     }
   }
 
-  /// ✅ Helper method to check if delivery is active
   bool get isActive {
     final s = status.toLowerCase();
     return s == 'accepted' ||
+        s == 'confirmed' ||
         s == 'ready' ||
         s == 'ready_for_pickup' ||
-        s == 'picked_up' ||
-        s == 'at_pickup_location' ||
-        s == 'in_transit' ||
-        s == 'out_for_delivery';
+        s == 'out_for_delivery' ||
+        s == 'in_transit';
   }
 
-  /// ✅ Convert to JSON
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'order_id': orderId,
+      'customer_id': customerId, // ✅ ADDED
       'customer_name': customerName,
       'customer_phone': customerPhone,
       'item': item,
@@ -164,13 +180,14 @@ class DeliveryModel {
       'delivery_address': deliveryAddress,
       'latitude': latitude,
       'longitude': longitude,
-      'pickup_latitude': pickupLatitude, // ✅ Added
-      'pickup_longitude': pickupLongitude, // ✅ Added
+      'pickup_latitude': pickupLatitude,
+      'pickup_longitude': pickupLongitude,
       'eta': eta,
       'amount': amount,
       'total_amount': totalAmount,
       'time': time,
       'status': status,
+      'assignment_status': assignmentStatus,
       'mess_name': messName,
       'mess_address': messAddress,
       'mess_phone': messPhone,
@@ -181,9 +198,9 @@ class DeliveryModel {
     };
   }
 
-  /// ✅ Copy with method
   DeliveryModel copyWith({
     String? id,
+    String? customerId, // ✅ ADDED
     String? orderId,
     String? customerName,
     String? customerPhone,
@@ -192,13 +209,14 @@ class DeliveryModel {
     String? deliveryAddress,
     double? latitude,
     double? longitude,
-    double? pickupLatitude, // ✅ Added
-    double? pickupLongitude, // ✅ Added
+    double? pickupLatitude,
+    double? pickupLongitude,
     String? eta,
     String? amount,
     String? totalAmount,
     String? time,
     String? status,
+    String? assignmentStatus,
     String? messName,
     String? messAddress,
     String? messPhone,
@@ -209,6 +227,7 @@ class DeliveryModel {
   }) {
     return DeliveryModel(
       id: id ?? this.id,
+      customerId: customerId ?? this.customerId, // ✅ ADDED
       orderId: orderId ?? this.orderId,
       customerName: customerName ?? this.customerName,
       customerPhone: customerPhone ?? this.customerPhone,
@@ -217,13 +236,14 @@ class DeliveryModel {
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
-      pickupLatitude: pickupLatitude ?? this.pickupLatitude, // ✅ Added
-      pickupLongitude: pickupLongitude ?? this.pickupLongitude, // ✅ Added
+      pickupLatitude: pickupLatitude ?? this.pickupLatitude,
+      pickupLongitude: pickupLongitude ?? this.pickupLongitude,
       eta: eta ?? this.eta,
       amount: amount ?? this.amount,
       totalAmount: totalAmount ?? this.totalAmount,
       time: time ?? this.time,
       status: status ?? this.status,
+      assignmentStatus: assignmentStatus ?? this.assignmentStatus,
       messName: messName ?? this.messName,
       messAddress: messAddress ?? this.messAddress,
       messPhone: messPhone ?? this.messPhone,
@@ -234,40 +254,39 @@ class DeliveryModel {
     );
   }
 
-  /// ✅ Helper getters for backward compatibility
   String get deliveryAddressOrDefault => deliveryAddress ?? address;
   String get totalAmountOrDefault => totalAmount ?? amount;
   String get messNameOrDefault => messName ?? item;
 
-  /// ✅ Distance helper methods - Get distances as doubles for calculations
   double get distBoyToMessKm => double.tryParse(distBoyToMess) ?? 0.0;
   double get distMessToCustKm => double.tryParse(distMessToCust) ?? 0.0;
   double get totalDistanceKm => double.tryParse(totalDistance) ?? 0.0;
 
-  /// ✅ Formatted distance strings for UI display
-  String get formattedDistBoyToMess => '${distBoyToMessKm.toStringAsFixed(1)} km';
-  String get formattedDistMessToCust => '${distMessToCustKm.toStringAsFixed(1)} km';
-  String get formattedTotalDistance => '${totalDistanceKm.toStringAsFixed(1)} km';
+  String get formattedDistBoyToMess =>
+      '${distBoyToMessKm.toStringAsFixed(1)} km';
+  String get formattedDistMessToCust =>
+      '${distMessToCustKm.toStringAsFixed(1)} km';
+  String get formattedTotalDistance =>
+      '${totalDistanceKm.toStringAsFixed(1)} km';
 
-  /// ✅ Check if distance data is available
   bool get hasDistanceData =>
       distBoyToMessKm > 0 || distMessToCustKm > 0 || totalDistanceKm > 0;
 
-  /// ✅ Calculate estimated earnings based on distance
   double get estimatedEarnings {
     const baseRate = 10.0;
     const perKmRate = 8.0;
     return baseRate + (totalDistanceKm * perKmRate);
   }
 
-  String get formattedEstimatedEarnings => '₹${estimatedEarnings.toStringAsFixed(2)}';
+  String get formattedEstimatedEarnings =>
+      '₹${estimatedEarnings.toStringAsFixed(2)}';
 
   String get distanceBreakdown =>
       'To Mess: $formattedDistBoyToMess | Mess to Customer: $formattedDistMessToCust | Total: $formattedTotalDistance';
 
   @override
   String toString() {
-    return 'DeliveryModel(id: $id, orderId: $orderId, customer: $customerName, status: $status)';
+    return 'DeliveryModel(id: $id, orderId: $orderId, customer: $customerName, status: $status, assignmentStatus: $assignmentStatus)';
   }
 
   @override

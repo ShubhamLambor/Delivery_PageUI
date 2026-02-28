@@ -1,107 +1,82 @@
+// lib/widgets/delivery/order_status_stepper.dart
 import 'package:flutter/material.dart';
 
 class OrderStatusStepper extends StatelessWidget {
-  final String currentStatus;
+  final String status;
+  final String assignmentStatus;
 
   const OrderStatusStepper({
-    Key? key,
-    required this.currentStatus,
-  }) : super(key: key);
+    super.key,
+    required this.status,
+    required this.assignmentStatus,
+  });
+
+  int get _currentStep {
+    final s = status.toLowerCase();
+    final a = assignmentStatus.toLowerCase();
+
+    if (s == 'delivered') return 3;
+    // ✅ FIXED: Added underscores to match backend ('outfordelivery' -> 'out_for_delivery', 'pickedup' -> 'picked_up')
+    if (s == 'out_for_delivery' || a == 'picked_up' || a == 'in_transit') return 2;
+    // ✅ FIXED: Added underscore ('atpickup' -> 'at_pickup')
+    if (a == 'at_pickup' || a == 'at_pickup_location') return 1;
+
+    return 0; // confirmed / accepted
+  }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Updated to 4 steps
-    final steps = ['Accepted', 'Ready', 'Picked Up', 'Delivered'];
-    final statuses = ['accepted', 'ready', 'picked_up', 'delivered'];
+    final step = _currentStep;
 
-    final status = currentStatus.toLowerCase().trim();
-
-    // ✅ Map various statuses to step indices
-    int currentIndex = 0;
-    if (status == 'accepted' ||
-        status == 'confirmed' ||
-        status == 'assigned' ||
-        status == 'waiting_for_order' ||
-        status == 'at_pickup_location' ||
-        status == 'assigned_to_delivery' ||
-        status.isEmpty) {
-      currentIndex = 0;
-    } else if (status == 'ready' || status == 'ready_for_pickup' || status == 'reached_pickup' || status == 'at_pickup_location') {
-      currentIndex = 1;
-    } else if (status == 'picked_up' || status == 'out_for_delivery' || status == 'in_transit') {
-      currentIndex = 2;
-    } else if (status == 'delivered') {
-      currentIndex = 3;
-    }
-
-    return Container(
+    return Padding(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 2),
-          ),
+      child: Row(
+        children: [
+          _buildDot(context, 0, step, 'Accepted'),
+          _buildDivider(),
+          _buildDot(context, 1, step, 'At pickup'),
+          _buildDivider(),
+          _buildDot(context, 2, step, 'On the way'),
+          _buildDivider(),
+          _buildDot(context, 3, step, 'Delivered'),
         ],
       ),
-      child: Row(
-        children: List.generate(steps.length, (index) {
-          final isActive = index <= currentIndex;
-          final isLast = index == steps.length - 1;
+    );
+  }
 
-          return Expanded(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: isActive ? Colors.green : Colors.grey[300],
-                          border: Border.all(
-                            color: isActive ? Colors.green : Colors.grey[400]!,
-                            width: 2,
-                          ),
-                        ),
-                        child: Icon(
-                          isActive ? Icons.check : Icons.circle,
-                          color: Colors.white,
-                          size: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        steps[index],
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                          color: isActive ? Colors.green : Colors.grey[600],
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                if (!isLast)
-                  Flexible(
-                    child: Container(
-                      height: 2,
-                      margin: const EdgeInsets.only(bottom: 24, left: 4, right: 4),
-                      color: isActive ? Colors.green : Colors.grey[300],
-                    ),
-                  ),
-              ],
-            ),
-          );
-        }),
+  Widget _buildDot(BuildContext context, int index, int current, String label) {
+    final active = index <= current;
+    final color = active ? Colors.green : Colors.grey.shade400;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        CircleAvatar(
+          radius: 12,
+          backgroundColor: color,
+          child: Icon(
+            active ? Icons.check : Icons.circle,
+            size: 14,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            color: active ? Colors.black87 : Colors.grey,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDivider() {
+    return Expanded(
+      child: Container(
+        height: 2,
+        color: Colors.grey.shade300,
       ),
     );
   }

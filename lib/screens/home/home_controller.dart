@@ -1,7 +1,7 @@
 // lib/screens/home/home_controller.dart
 
 import 'package:flutter/material.dart';
-import 'dart:async';  // ✅ ADD THIS
+import 'dart:async';
 import '../../models/delivery_model.dart';
 import '../../services/delivery_service.dart';
 import '../../services/api_service.dart';
@@ -9,7 +9,7 @@ import '../../services/location_service.dart';
 
 class HomeController extends ChangeNotifier {
   final LocationService _locationService = LocationService();
-  Timer? _pollingTimer;  // ✅ ADD THIS
+  Timer? _pollingTimer;
 
   // REAL DATA from backend
   List<DeliveryModel> _allDeliveries = [];
@@ -18,11 +18,21 @@ class HomeController extends ChangeNotifier {
   String? _errorMessage;
   String? _partnerId;
 
-  // ✅ Partner stats from backend
+  // Partner stats from backend
   int _todayEarnings = 0;
   int _completedToday = 0;
   int _pendingToday = 0;
   int _cancelledToday = 0;
+
+  // Track which new orders we already showed popup for
+  final Set<String> _shownNewOrderIds = {};
+
+  // Optional: expose a stream/callback for UI to listen to new-order events
+  final StreamController<Map<String, dynamic>> _newOrderController =
+  StreamController<Map<String, dynamic>>.broadcast();
+
+  Stream<Map<String, dynamic>> get newOrderStream =>
+      _newOrderController.stream;
 
   bool get isOnline => _isOnline;
   bool get isLoading => _isLoading;
@@ -36,15 +46,21 @@ class HomeController extends ChangeNotifier {
 
   int get pendingCount => _pendingToday > 0
       ? _pendingToday
-      : _allDeliveries.where((d) => d.status.toLowerCase() == 'pending').length;
+      : _allDeliveries
+      .where((d) => d.status.toLowerCase() == 'pending')
+      .length;
 
   int get completedCount => _completedToday > 0
       ? _completedToday
-      : _allDeliveries.where((d) => d.status.toLowerCase() == 'delivered').length;
+      : _allDeliveries
+      .where((d) => d.status.toLowerCase() == 'delivered')
+      .length;
 
   int get cancelledCount => _cancelledToday > 0
       ? _cancelledToday
-      : _allDeliveries.where((d) => d.status.toLowerCase() == 'cancelled').length;
+      : _allDeliveries
+      .where((d) => d.status.toLowerCase() == 'cancelled')
+      .length;
 
   /// Current active delivery
   DeliveryModel? get currentDelivery {
@@ -63,7 +79,7 @@ class HomeController extends ChangeNotifier {
 
     final current = _allDeliveries.where((d) {
       final status = d.status.toLowerCase().trim();
-      return status == 'assigned' ||        // ✅ ADD THIS LINE
+      return status == 'assigned' ||
           status == 'accepted' ||
           status == 'confirmed' ||
           status == 'picked_up' ||
@@ -73,6 +89,7 @@ class HomeController extends ChangeNotifier {
           status == 'waiting_for_pickup' ||
           status == 'ready_for_pickup' ||
           status == 'at_pickup_location' ||
+          status == 'at_pickup' || // ✅ ADDED THIS LINE
           status == 'out_for_delivery';
     }).toList();
 
@@ -95,7 +112,9 @@ class HomeController extends ChangeNotifier {
     return _allDeliveries
         .where((d) {
       final status = d.status.toLowerCase().trim();
-      return status == 'accepted' || status == 'ready' || status == 'ready_for_pickup';
+      return status == 'accepted' ||
+          status == 'ready' ||
+          status == 'ready_for_pickup';
     })
         .skip(1)
         .toList();
@@ -107,34 +126,38 @@ class HomeController extends ChangeNotifier {
     debugPrint('✅ [HOME_CONTROLLER] Partner ID set: $id');
   }
 
-  /// ✅ NEW: Start polling for new orders every 5 seconds
+  /// Start polling for active + new orders
   void startPolling() {
     if (_partnerId == null || _partnerId!.isEmpty) {
-      debugPrint('❌ [HOME_CONTROLLER] Cannot start polling: Partner ID is null');
+      debugPrint(
+          '❌ [HOME_CONTROLLER] Cannot start polling: Partner ID is null');
       return;
     }
 
     stopPolling();
 
-    debugPrint('🔄 [HOME_CONTROLLER] Starting order polling (every 5 seconds)');
+    debugPrint(
+        '🔄 [HOME_CONTROLLER] Starting order polling (every 5 seconds)');
     debugPrint('   Partner ID: $_partnerId');
     debugPrint('   Is Online: $_isOnline');
 
-    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    _pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       debugPrint('⏰ [HOME_CONTROLLER] Polling tick #${timer.tick}');
 
-      if (_isOnline && _partnerId != null) {
+      if (_isOnline && _partnerId != null && _partnerId!.isNotEmpty) {
         debugPrint('   ✅ Fetching deliveries...');
-        fetchDeliveries();
+        await fetchDeliveries();
+        await _pollNewOrders();
       } else {
         debugPrint('   ⏸️ Skipping poll (offline or no partner ID)');
       }
     });
 
-    debugPrint('✅ [HOME_CONTROLLER] Timer created: ${_pollingTimer?.isActive}');
+    debugPrint(
+        '✅ [HOME_CONTROLLER] Timer created: ${_pollingTimer?.isActive}');
   }
 
-  /// ✅ NEW: Stop polling
+  /// Stop polling
   void stopPolling() {
     if (_pollingTimer != null) {
       _pollingTimer!.cancel();
@@ -143,10 +166,55 @@ class HomeController extends ChangeNotifier {
     }
   }
 
+  /// Poll get_new_orders.php and emit events for UI to show popup
+  Future<void> _pollNewOrders() async {
+    if (_partnerId == null || _partnerId!.isEmpty) {
+      return;
+    }
+
+    try {
+      debugPrint(
+          '🔍 [HOME_CONTROLLER] Checking new orders for partner: $_partnerId');
+      final result = await DeliveryService.getNewOrders(
+        deliveryPartnerId: _partnerId!,
+      );
+
+      debugPrint(
+          '📥 [HOME_CONTROLLER] New Orders Result: success=${result['success']} count=${result['count']}');
+
+      if (result['success'] == true) {
+        final List orders = result['orders'] ?? [];
+        for (final o in orders) {
+          final orderId =
+          (o['order_id'] ?? o['id'])?.toString();
+          final status =
+          o['status']?.toString().toLowerCase().trim();
+
+          if (orderId == null) continue;
+
+          // treat 'assigned' and 'confirmed' as new incoming orders
+          if ((status == 'assigned' || status == 'confirmed') &&
+              !_shownNewOrderIds.contains(orderId)) {
+            debugPrint(
+                '🆕 [HOME_CONTROLLER] New order detected: $orderId (status=$status)');
+            _shownNewOrderIds.add(orderId);
+
+            // Push event to stream; UI can listen and show dialog
+            _newOrderController.add(o as Map<String, dynamic>);
+          }
+        }
+      }
+    } catch (e, st) {
+      debugPrint('❌ [HOME_CONTROLLER] Error polling new orders: $e');
+      debugPrint('   Stack: $st');
+    }
+  }
+
   /// Fetch partner stats from backend
   Future<void> fetchPartnerStats() async {
     if (_partnerId == null || _partnerId!.isEmpty) {
-      debugPrint('❌ [HOME_CONTROLLER] Cannot fetch stats: Partner ID is null');
+      debugPrint(
+          '❌ [HOME_CONTROLLER] Cannot fetch stats: Partner ID is null');
       return;
     }
 
@@ -159,7 +227,6 @@ class HomeController extends ChangeNotifier {
       if (result['success'] == true && result['stats'] != null) {
         final stats = result['stats'];
 
-        // ✅ Handle both int and double values
         _todayEarnings = ((stats['todayearnings'] ?? 0) as num).toInt();
         _completedToday = (stats['completedtoday'] ?? 0) as int;
         _pendingToday = (stats['pendingtoday'] ?? 0) as int;
@@ -173,13 +240,13 @@ class HomeController extends ChangeNotifier {
 
         notifyListeners();
       } else {
-        debugPrint('⚠️ [HOME_CONTROLLER] Stats not available from backend');
+        debugPrint(
+            '⚠️ [HOME_CONTROLLER] Stats not available from backend');
       }
     } catch (e) {
       debugPrint('❌ [HOME_CONTROLLER] Error fetching stats: $e');
     }
   }
-
 
   /// Fetch deliveries from backend
   Future<void> fetchDeliveries() async {
@@ -189,7 +256,8 @@ class HomeController extends ChangeNotifier {
     }
 
     try {
-      debugPrint('📋 [HOME_CONTROLLER] Fetching deliveries for partner: $_partnerId');
+      debugPrint(
+          '📋 [HOME_CONTROLLER] Fetching deliveries for partner: $_partnerId');
       final data = await DeliveryService.getActiveDeliveries(_partnerId!);
       debugPrint('═══════════════════════════════════════');
       debugPrint('🔵 [HOME_CONTROLLER] FETCHED DELIVERIES FROM API:');
@@ -202,7 +270,8 @@ class HomeController extends ChangeNotifier {
         }
       }
       _allDeliveries = data;
-      debugPrint('   ✅ Updated _allDeliveries list with ${_allDeliveries.length} items');
+      debugPrint(
+          '   ✅ Updated _allDeliveries list with ${_allDeliveries.length} items');
       debugPrint('═══════════════════════════════════════');
       _errorMessage = null;
       notifyListeners();
@@ -243,7 +312,8 @@ class HomeController extends ChangeNotifier {
 
       if (result['success'] == true || result['status'] == 'success') {
         _isOnline = newStatus;
-        debugPrint('✅ Status updated: ${_isOnline ? 'Online' : 'Offline'}');
+        debugPrint(
+            '✅ Status updated: ${_isOnline ? 'Online' : 'Offline'}');
 
         if (_isOnline) {
           debugPrint('🌍 Starting location tracking...');
@@ -255,7 +325,6 @@ class HomeController extends ChangeNotifier {
             },
           );
 
-          // ✅ START POLLING
           startPolling();
 
           await fetchDeliveries();
@@ -263,8 +332,6 @@ class HomeController extends ChangeNotifier {
         } else {
           debugPrint('🛑 Stopping location tracking...');
           _locationService.stopLocationTracking();
-
-          // ✅ STOP POLLING
           stopPolling();
         }
       } else {
@@ -299,7 +366,8 @@ class HomeController extends ChangeNotifier {
             statusValue == '1' ||
             statusValue == true ||
             statusValue == 'online';
-        debugPrint('✅ Fetched status: ${_isOnline ? 'Online' : 'Offline'}');
+        debugPrint(
+            '✅ Fetched status: ${_isOnline ? 'Online' : 'Offline'}');
 
         if (_isOnline) {
           debugPrint('🌍 Starting location tracking...');
@@ -311,7 +379,6 @@ class HomeController extends ChangeNotifier {
             },
           );
 
-          // ✅ START POLLING if already online
           startPolling();
           debugPrint('✅ Polling started after fetching status');
         } else {
@@ -337,7 +404,8 @@ class HomeController extends ChangeNotifier {
       debugPrint('✅ [HOME_CONTROLLER] Initialized successfully');
       debugPrint('   Final delivery count: ${_allDeliveries.length}');
       debugPrint('   Is Online: $_isOnline');
-      debugPrint('   Polling Active: ${_pollingTimer?.isActive ?? false}');
+      debugPrint(
+          '   Polling Active: ${_pollingTimer?.isActive ?? false}');
     } catch (e) {
       debugPrint('❌ [HOME_CONTROLLER] Error initializing: $e');
       _errorMessage = 'Failed to initialize';
@@ -374,8 +442,9 @@ class HomeController extends ChangeNotifier {
 
   @override
   void dispose() {
-    stopPolling();  // ✅ STOP POLLING on dispose
+    stopPolling();
     _locationService.dispose();
+    _newOrderController.close();
     super.dispose();
   }
 }
