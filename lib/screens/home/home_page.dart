@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_osm_plugin/flutter_osm_plugin.dart';
 
 // Controllers & Services
+import '../../services/map_service.dart';
 import '../delivery/order_tracking_screen.dart';
 import 'home_controller.dart';
 import '../auth/auth_controller.dart';
@@ -66,8 +68,6 @@ class _HomePageState extends State<HomePage> {
 
     if (uid == null || uid.isEmpty) return;
 
-    debugPrint('📡 Starting order polling for partner: $uid...');
-
     pollingTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       if (!mounted) {
         timer.cancel();
@@ -86,20 +86,12 @@ class _HomePageState extends State<HomePage> {
             assignment != null &&
             assignment is Map) {
 
-          debugPrint('🆕 NEW ORDER DETECTED via Polling!');
           timer.cancel(); // Stop polling while sheet is open
 
           if (mounted) {
-            // Convert raw map to DeliveryModel so the Slider Sheet can read it perfectly
             final newOrder = DeliveryModel.fromJson(Map<String, dynamic>.from(assignment));
-
-            // Show the slider sheet and wait for it to close
             await _showNewOrderPopup(newOrder);
-
-            // Restart polling after sheet closes
-            if (mounted) {
-              startPolling();
-            }
+            if (mounted) startPolling(); // Restart polling after sheet closes
           }
         }
       } catch (e) {
@@ -112,13 +104,11 @@ class _HomePageState extends State<HomePage> {
     if (pollingTimer != null) {
       pollingTimer!.cancel();
       pollingTimer = null;
-      debugPrint('🛑 Stopped order polling');
     }
   }
 
   Future _handleRefresh() async {
     if (!mounted) return;
-
     final home = context.read<HomeController>();
     final deliveries = context.read<DeliveriesController>();
 
@@ -131,125 +121,67 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 20),
-                SizedBox(width: 12),
-                Text('Data refreshed successfully!'),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
+            content: Row(children: [Icon(Icons.check_circle, color: Colors.white, size: 20), SizedBox(width: 12), Text('Data refreshed successfully!')]),
+            backgroundColor: Colors.green, duration: Duration(seconds: 2),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to refresh data'), backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to refresh data'), backgroundColor: Colors.red));
       }
     }
   }
 
-  /// ✅ MODERN SLIDER POPUP (Replaces the old Dialog)
   Future<void> _showNewOrderPopup(DeliveryModel order) async {
     final auth = context.read<AuthController>();
     final uid = auth.getCurrentUserId() ?? '';
 
     await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
+      context: context, isScrollControlled: true, isDismissible: false, enableDrag: false, backgroundColor: Colors.transparent,
       builder: (ctx) => NewOrderSheet(
         order: order,
-        onAccept: () async {
-          Navigator.pop(ctx); // Close sheet
-          await _handleAcceptOrderFlow(order, uid);
-        },
-        onReject: () async {
-          Navigator.pop(ctx); // Close sheet
-          await _handleRejectOrderFlow(order.id, uid);
-        },
+        onAccept: () async { Navigator.pop(ctx); await _handleAcceptOrderFlow(order, uid); },
+        onReject: () async { Navigator.pop(ctx); await _handleRejectOrderFlow(order.id, uid); },
       ),
     );
   }
 
-  /// ✅ SINGLE, CLEAN ACCEPT LOGIC
   Future<void> _handleAcceptOrderFlow(DeliveryModel order, String partnerId) async {
-    // 1. Prevent double accept
     if (order.assignmentStatus.toLowerCase() == 'accepted') {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order already assigned to you!'), backgroundColor: Colors.green),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order already assigned!'), backgroundColor: Colors.green));
         Navigator.push(context, MaterialPageRoute(builder: (_) => OrderTrackingScreen(orderId: order.id, deliveryPartnerId: partnerId)));
       }
       return;
     }
 
-    // 2. Show Loading
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-              SizedBox(width: 16),
-              Text('Accepting order...'),
-            ],
-          ),
-          backgroundColor: Colors.orange,
-          duration: Duration(seconds: 2),
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Row(children: [SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)), SizedBox(width: 16), Text('Accepting order...')]), backgroundColor: Colors.orange, duration: Duration(seconds: 2)));
     }
 
-    // 3. API Call
     final result = await DeliveryService.acceptOrder(orderId: order.id, deliveryPartnerId: partnerId);
 
     if (mounted) {
       ScaffoldMessenger.of(context).clearSnackBars();
-
       if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Order accepted successfully!'), backgroundColor: Colors.green),
-        );
-
-        // 4. Refresh Data
-        await Future.wait([
-          context.read<DeliveriesController>().fetchDeliveries(),
-          context.read<HomeController>().fetchDeliveries(),
-        ]);
-
-        // 5. Navigate
-        if (mounted) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => OrderTrackingScreen(orderId: order.id, deliveryPartnerId: partnerId)));
-        }
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order accepted!'), backgroundColor: Colors.green));
+        await Future.wait([context.read<DeliveriesController>().fetchDeliveries(), context.read<HomeController>().fetchDeliveries()]);
+        if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => OrderTrackingScreen(orderId: order.id, deliveryPartnerId: partnerId)));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(result['message'] ?? 'Failed to accept order'), backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'] ?? 'Failed to accept order'), backgroundColor: Colors.red));
       }
     }
   }
 
-  /// ✅ SINGLE, CLEAN REJECT LOGIC
   Future<void> _handleRejectOrderFlow(String orderId, String partnerId) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reject Order?'),
-        content: const Text('Are you sure you want to reject this order?'),
+        title: const Text('Reject Order?'), content: const Text('Are you sure you want to reject this order?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Reject'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context, true), style: TextButton.styleFrom(foregroundColor: Colors.red), child: const Text('Reject')),
         ],
       ),
     );
@@ -258,18 +190,12 @@ class _HomePageState extends State<HomePage> {
 
     try {
       final result = await DeliveryService.rejectOrder(orderId: orderId, deliveryPartnerId: partnerId, reason: 'User declined');
-
       if (mounted) {
-        if (result['success'] == true) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order rejected'), backgroundColor: Colors.orange));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'] ?? 'Failed to reject'), backgroundColor: Colors.red));
-        }
+        if (result['success'] == true) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order rejected'), backgroundColor: Colors.orange));
+        else ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result['message'] ?? 'Failed to reject'), backgroundColor: Colors.red));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error rejecting order'), backgroundColor: Colors.red));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error rejecting order'), backgroundColor: Colors.red));
     }
   }
 
@@ -296,55 +222,15 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showLocationServiceDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Location Services Disabled'),
-        content: const Text('Please enable location services.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-      ),
-    );
+    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Location Services Disabled'), content: const Text('Please enable location services.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))]));
   }
 
   void _showPermissionDeniedDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Permission Required'),
-        content: const Text('App needs location access.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () { Navigator.pop(context); requestLocationPermission(); }, child: const Text('Retry')),
-        ],
-      ),
-    );
+    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Permission Required'), content: const Text('App needs location access.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () { Navigator.pop(context); requestLocationPermission(); }, child: const Text('Retry'))]));
   }
 
   void _showPermissionPermanentlyDeniedDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Permission Denied'),
-        content: const Text('Enable location in settings.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(onPressed: () { Geolocator.openAppSettings(); Navigator.pop(context); }, child: const Text('Settings')),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _navigateToMess() async {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const OSMNavigationScreen(
-          destinationLat: 19.0760,
-          destinationLng: 72.8777,
-          destinationName: 'Shree Kitchen',
-        ),
-      ),
-    );
+    showDialog(context: context, builder: (context) => AlertDialog(title: const Text('Permission Denied'), content: const Text('Enable location in settings.'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), TextButton(onPressed: () { Geolocator.openAppSettings(); Navigator.pop(context); }, child: const Text('Settings'))]));
   }
 
   @override
@@ -365,19 +251,14 @@ class _HomePageState extends State<HomePage> {
 
     final DeliveryModel? current = home.currentDelivery;
 
-    // Show popup for active orders that haven't been responded to yet
     if (current != null && current.status == 'accepted' && _lastShownOrderId != current.id) {
       _lastShownOrderId = current.id;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _showNewOrderPopup(current);
-        }
+        if (mounted) _showNewOrderPopup(current);
       });
     }
 
-    if (current == null) {
-      _lastShownOrderId = null;
-    }
+    if (current == null) _lastShownOrderId = null;
 
     final bool isOnline = home.isOnline;
     final String userName = auth.user?.name ?? 'Delivery Partner';
@@ -403,16 +284,10 @@ class _HomePageState extends State<HomePage> {
                 padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: isOnline
-                        ? [const Color(0xFF2E7D32), const Color(0xFF4CAF50)]
-                        : [const Color(0xFFC62828), const Color(0xFFEF5350)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                    colors: isOnline ? [const Color(0xFF2E7D32), const Color(0xFF4CAF50)] : [const Color(0xFFC62828), const Color(0xFFEF5350)],
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
                   ),
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(30),
-                    bottomRight: Radius.circular(30),
-                  ),
+                  borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -424,11 +299,7 @@ class _HomePageState extends State<HomePage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                'Hello, $userName',
-                                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                              Text('Hello, $userName', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
                               const SizedBox(height: 4),
                               Text(dateStr, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14)),
                             ],
@@ -438,30 +309,19 @@ class _HomePageState extends State<HomePage> {
                           children: [
                             Container(
                               decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
-                              child: IconButton(
-                                icon: const Icon(Icons.support_agent, color: Colors.white, size: 26),
-                                onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatbotPage())); },
-                              ),
+                              child: IconButton(icon: const Icon(Icons.support_agent, color: Colors.white, size: 26), onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatbotPage())); }),
                             ),
                             const SizedBox(width: 8),
                             Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                              child: CircleAvatar(
-                                radius: 20,
-                                backgroundColor: Colors.white,
-                                child: Icon(Icons.person, color: isOnline ? Colors.green : Colors.red),
-                              ),
+                              padding: const EdgeInsets.all(2), decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                              child: CircleAvatar(radius: 20, backgroundColor: Colors.white, child: Icon(Icons.person, color: isOnline ? Colors.green : Colors.red)),
                             ),
                           ],
                         ),
                       ],
                     ),
                     const SizedBox(height: 20),
-                    _SwipeToggleButton(
-                      isOnline: isOnline,
-                      onToggle: home.isLoading ? null : home.toggleOnline,
-                    ),
+                    _SwipeToggleButton(isOnline: isOnline, onToggle: home.isLoading ? null : home.toggleOnline),
                   ],
                 ),
               ),
@@ -472,12 +332,7 @@ class _HomePageState extends State<HomePage> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: GridView.count(
-                    shrinkWrap: true,
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 1.6,
-                    physics: const NeverScrollableScrollPhysics(),
+                    shrinkWrap: true, crossAxisCount: 2, mainAxisSpacing: 12, crossAxisSpacing: 12, childAspectRatio: 1.6, physics: const NeverScrollableScrollPhysics(),
                     children: [
                       _buildStatCard('Today\'s Earnings', home.todayEarnings.toString(), Icons.currency_rupee, Colors.orange),
                       _buildStatCard('Completed', completed.toString(), Icons.check_circle, Colors.green),
@@ -488,7 +343,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // ===== MAIN CONTENT =====
+              // ===== MAIN CONTENT (MAP & MESSES) =====
               Transform.translate(
                 offset: const Offset(0, -80),
                 child: Padding(
@@ -496,9 +351,13 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Next Pickup', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 12),
-                      _buildPickupCard(),
+                      // Hardcoded Shree Kitchen is REMOVED.
+                      // Added dynamic 5km radius map and list section.
+                      NearbyMessesSection(
+                        onViewMapTapped: () {
+                          // You can link this to your global map screen later
+                        },
+                      ),
                       const SizedBox(height: 100),
                     ],
                   ),
@@ -515,90 +374,19 @@ class _HomePageState extends State<HomePage> {
   Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))]),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-                child: Icon(icon, color: color, size: 18),
-              ),
+              Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 18)),
               const Spacer(),
               Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             ],
           ),
           const SizedBox(height: 8),
-          Flexible(
-            child: Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPickupCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.shade100),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                child: const Icon(Icons.store, color: Colors.orange, size: 20),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Shree Kitchen', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    Text('Pickup Point', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(8)),
-                child: const Text('25 Tiffins', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Icon(Icons.access_time, size: 16, color: Colors.grey[600]),
-              const SizedBox(width: 6),
-              const Expanded(child: Text('10:15 - 10:45 AM', style: TextStyle(fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _navigateToMess,
-              icon: const Icon(Icons.navigation, size: 18),
-              label: const Text('Navigate to Mess'),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.black, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            ),
-          ),
+          Flexible(child: Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis)),
         ],
       ),
     );
@@ -609,13 +397,11 @@ class _HomePageState extends State<HomePage> {
 class _SwipeToggleButton extends StatefulWidget {
   final bool isOnline;
   final VoidCallback? onToggle;
-
   const _SwipeToggleButton({required this.isOnline, required this.onToggle});
 
   @override
   State<_SwipeToggleButton> createState() => _SwipeToggleButtonState();
 }
-
 class _SwipeToggleButtonState extends State<_SwipeToggleButton> {
   double dragPosition = 0.0;
   bool isDragging = false;
@@ -635,14 +421,8 @@ class _SwipeToggleButtonState extends State<_SwipeToggleButton> {
     return Opacity(
       opacity: canToggle ? 1.0 : 0.6,
       child: Container(
-        height: height,
-        width: screenWidth,
-        decoration: BoxDecoration(
-          color: backgroundColor,
-          borderRadius: BorderRadius.circular(30),
-          boxShadow: [BoxShadow(color: backgroundColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))],
-          border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-        ),
+        height: height, width: screenWidth,
+        decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: backgroundColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))], border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5)),
         child: Stack(
           children: [
             Row(
@@ -652,11 +432,7 @@ class _SwipeToggleButtonState extends State<_SwipeToggleButton> {
               ],
             ),
             AnimatedPositioned(
-              duration: isDragging ? Duration.zero : const Duration(milliseconds: 300),
-              curve: Curves.easeOutBack,
-              left: currentPosition,
-              top: 2,
-              bottom: 2,
+              duration: isDragging ? Duration.zero : const Duration(milliseconds: 300), curve: Curves.easeOutBack, left: currentPosition, top: 2, bottom: 2,
               child: GestureDetector(
                 onHorizontalDragStart: canToggle ? (_) => setState(() { isDragging = true; dragPosition = targetPosition; }) : null,
                 onHorizontalDragUpdate: canToggle ? (d) => setState(() { dragPosition = (dragPosition + d.delta.dx).clamp(0.0, maxDrag); }) : null,
@@ -668,20 +444,8 @@ class _SwipeToggleButtonState extends State<_SwipeToggleButton> {
                 }) : null,
                 onTap: canToggle ? () { if (!isDragging) widget.onToggle?.call(); } : null,
                 child: Container(
-                  width: thumbWidth - 4,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(26),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2))],
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(widget.isOnline ? Icons.verified_user : Icons.power_settings_new, color: backgroundColor, size: 20),
-                      const SizedBox(width: 8),
-                      Text(widget.isOnline ? 'Online' : 'Offline', style: TextStyle(color: backgroundColor, fontWeight: FontWeight.bold, fontSize: 14)),
-                    ],
-                  ),
+                  width: thumbWidth - 4, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(26), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2))]),
+                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(widget.isOnline ? Icons.verified_user : Icons.power_settings_new, color: backgroundColor, size: 20), const SizedBox(width: 8), Text(widget.isOnline ? 'Online' : 'Offline', style: TextStyle(color: backgroundColor, fontWeight: FontWeight.bold, fontSize: 14))]),
                 ),
               ),
             ),
@@ -693,38 +457,20 @@ class _SwipeToggleButtonState extends State<_SwipeToggleButton> {
 }
 
 // ---------------------------------------------------------
-// 🛠️ WIDGET: Modern New Order Bottom Sheet
+// 🛠️ WIDGET: Modern New Order Bottom Sheet (Truncated for brevity, keep your original)
 // ---------------------------------------------------------
 class NewOrderSheet extends StatefulWidget {
   final DeliveryModel order;
   final VoidCallback onAccept;
   final VoidCallback onReject;
-
-  const NewOrderSheet({
-    super.key,
-    required this.order,
-    required this.onAccept,
-    required this.onReject,
-  });
-
+  const NewOrderSheet({super.key, required this.order, required this.onAccept, required this.onReject});
   @override
   State<NewOrderSheet> createState() => _NewOrderSheetState();
 }
-
 class _NewOrderSheetState extends State<NewOrderSheet> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
-  }
+  @override void initState() { super.initState(); _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true); }
+  @override void dispose() { _pulseController.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -732,180 +478,326 @@ class _NewOrderSheetState extends State<NewOrderSheet> with SingleTickerProvider
       filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
       child: Container(
         height: MediaQuery.of(context).size.height * 0.70,
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          boxShadow: [BoxShadow(blurRadius: 20, color: Colors.black26)],
-        ),
+        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24)), boxShadow: [BoxShadow(blurRadius: 20, color: Colors.black26)]),
         child: Column(
           children: [
-            _buildHeader(),
+            Padding(padding: const EdgeInsets.only(top: 24, bottom: 10), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [AnimatedBuilder(animation: _pulseController, builder: (context, child) { return Container(decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.5 * _pulseController.value), blurRadius: 10 * _pulseController.value, spreadRadius: 2 * _pulseController.value)]), child: child); }, child: const Icon(Icons.notifications_active, color: Colors.orange, size: 28)), const SizedBox(width: 12), const Text('NEW REQUEST', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 0.5))]))),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   children: [
-                    const SizedBox(height: 10),
-                    Text('ESTIMATED EARNINGS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[500], letterSpacing: 1.2)),
-                    const SizedBox(height: 4),
-                    Text('₹${widget.order.amount}', style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w800, color: Color(0xFF2E7D32))),
-                    const SizedBox(height: 30),
-                    _buildTimelineRow(icon: Icons.storefront, color: Colors.orange, title: widget.order.messName ?? 'Restaurant', subtitle: 'Pickup Location'),
-                    _buildConnector(),
-                    _buildTimelineRow(icon: Icons.person_pin_circle, color: Colors.black, title: widget.order.customerName, subtitle: widget.order.deliveryAddress ?? widget.order.address),
+                    const SizedBox(height: 10), Text('ESTIMATED EARNINGS', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey[500], letterSpacing: 1.2)), const SizedBox(height: 4), Text('₹${widget.order.amount}', style: const TextStyle(fontSize: 42, fontWeight: FontWeight.w800, color: Color(0xFF2E7D32))), const SizedBox(height: 30),
+                    Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.storefront, color: Colors.orange, size: 24)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(widget.order.messName ?? 'Restaurant', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis), const SizedBox(height: 4), Text('Pickup Location', style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis)]))]),
+                    Padding(padding: const EdgeInsets.only(left: 22), child: Align(alignment: Alignment.centerLeft, child: Container(height: 30, width: 2, color: Colors.grey[300]))),
+                    Row(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.black.withOpacity(0.1), shape: BoxShape.circle), child: const Icon(Icons.person_pin_circle, color: Colors.black, size: 24)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(widget.order.customerName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis), const SizedBox(height: 4), Text(widget.order.deliveryAddress ?? widget.order.address, style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis)]))]),
                     const Spacer(),
-                    if (widget.order.hasDistanceData)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.directions_bike, size: 16, color: Colors.blue),
-                            const SizedBox(width: 8),
-                            Text(widget.order.formattedTotalDistance, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
-                          ],
-                        ),
-                      ),
+                    if (widget.order.hasDistanceData) Container(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(20)), child: Row(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.directions_bike, size: 16, color: Colors.blue), const SizedBox(width: 8), Text(widget.order.formattedTotalDistance, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))])),
                     const Spacer(),
                   ],
                 ),
               ),
             ),
             Container(
-              padding: const EdgeInsets.fromLTRB(24, 10, 24, 30),
-              decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), offset: const Offset(0, -5), blurRadius: 10)]),
-              child: Column(
-                children: [
-                  SlideToAcceptButton(onAccept: widget.onAccept),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: widget.onReject,
-                    child: Text('Reject Order', style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w600, fontSize: 16)),
-                  ),
-                ],
-              ),
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 30), decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), offset: const Offset(0, -5), blurRadius: 10)]),
+              child: Column(children: [SlideToAcceptButton(onAccept: widget.onAccept), const SizedBox(height: 16), TextButton(onPressed: widget.onReject, child: Text('Reject Order', style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w600, fontSize: 16)))]),
             ),
           ],
         ),
       ),
     );
-  }
-
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 24, bottom: 10),
-      child: Center(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                return Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.5 * _pulseController.value), blurRadius: 10 * _pulseController.value, spreadRadius: 2 * _pulseController.value)],
-                  ),
-                  child: child,
-                );
-              },
-              child: const Icon(Icons.notifications_active, color: Colors.orange, size: 28),
-            ),
-            const SizedBox(width: 12),
-            const Text('NEW REQUEST', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTimelineRow({required IconData icon, required Color color, required String title, required String subtitle}) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(children: [Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color, size: 24))]),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 4),
-              Text(subtitle, style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.3), maxLines: 2, overflow: TextOverflow.ellipsis),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildConnector() {
-    return Padding(padding: const EdgeInsets.only(left: 22), child: Align(alignment: Alignment.centerLeft, child: Container(height: 30, width: 2, color: Colors.grey[300])));
   }
 }
 
-// ---------------------------------------------------------
-// 🟢 WIDGET: Custom Slide to Accept Button
-// ---------------------------------------------------------
 class SlideToAcceptButton extends StatefulWidget {
   final VoidCallback onAccept;
   const SlideToAcceptButton({super.key, required this.onAccept});
-
-  @override
-  State<SlideToAcceptButton> createState() => _SlideToAcceptButtonState();
+  @override State<SlideToAcceptButton> createState() => _SlideToAcceptButtonState();
 }
-
 class _SlideToAcceptButtonState extends State<SlideToAcceptButton> {
   double _position = 0.0;
   bool _submitted = false;
+  @override Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (context, constraints) {
+      final maxWidth = constraints.maxWidth; final maxDrag = maxWidth - 60;
+      return Container(
+        height: 64, width: maxWidth, decoration: BoxDecoration(color: _submitted ? Colors.green : Colors.grey[200], borderRadius: BorderRadius.circular(32)),
+        child: Stack(children: [
+          Center(child: Opacity(opacity: _submitted ? 0 : (1 - (_position / maxDrag)).clamp(0.0, 1.0), child: const Text('Slide to Accept Order  >>>', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 16)))),
+          if (_submitted) const Center(child: Text('ACCEPTED!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 1.5))),
+          AnimatedPositioned(
+            duration: Duration(milliseconds: _submitted ? 200 : 0), curve: Curves.easeOut, left: _submitted ? maxWidth - 60 : _position,
+            child: GestureDetector(
+              onHorizontalDragUpdate: (details) { if (_submitted) return; setState(() { _position = (_position + details.delta.dx).clamp(0.0, maxDrag); }); },
+              onHorizontalDragEnd: (details) { if (_submitted) return; if (_position > maxDrag * 0.75) { setState(() { _submitted = true; _position = maxDrag; }); widget.onAccept(); } else { setState(() { _position = 0.0; }); } },
+              child: Container(height: 56, width: 56, margin: const EdgeInsets.all(4), decoration: BoxDecoration(color: _submitted ? Colors.white : Colors.green, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]), child: Icon(_submitted ? Icons.check : Icons.chevron_right, color: _submitted ? Colors.green : Colors.white, size: 30)),
+            ),
+          ),
+        ]),
+      );
+    });
+  }
+}
+
+// ---------------------------------------------------------
+// 🗺️ WIDGET: Nearby Messes (5km Radius Map & List)
+// ---------------------------------------------------------
+class NearbyMessesSection extends StatefulWidget {
+  final VoidCallback onViewMapTapped;
+
+  const NearbyMessesSection({super.key, required this.onViewMapTapped});
+
+  @override
+  State<NearbyMessesSection> createState() => _NearbyMessesSectionState();
+}
+
+class _NearbyMessesSectionState extends State<NearbyMessesSection> {
+  late MapController _miniMapController;
+  bool _isLoading = false;
+
+  // Stores the messes that fall within the 5km radius
+  List<Map<String, dynamic>> _filteredMesses = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _miniMapController = MapController(
+      initMapWithUserPosition: const UserTrackingOption(enableTracking: true, unFollowUser: false),
+    );
+  }
+
+  @override
+  void dispose() {
+    _miniMapController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onMapReady(bool isReady) async {
+    if (!isReady) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      // 1. Get User's Current Location
+      Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      GeoPoint userLocation = GeoPoint(latitude: position.latitude, longitude: position.longitude);
+
+      // ✅ FIX: Move to location, wait a split second, then force a much closer zoom!
+      await _miniMapController.moveTo(userLocation, animate: true);
+      await Future.delayed(const Duration(milliseconds: 300));
+      await _miniMapController.setZoom(zoomLevel: 15.0); // 15.0 zooms in much closer to make the circle look BIG
+
+      // 2. Draw the 5km Blue Circle
+      await _miniMapController.drawCircle(
+          CircleOSM(
+            key: "5km_radius",
+            centerPoint: userLocation,
+            radius: 5000, // 5km in meters
+            color: Colors.lightBlueAccent.withOpacity(0.2), // Transparent inner blue
+            strokeWidth: 2,
+            borderColor: Colors.blueAccent, // Solid border
+          )
+      );
+
+      // 3. Fetch All Live Messes
+      final allMesses = await MapService.fetchNearbyMesses();
+      List<Map<String, dynamic>> nearby = [];
+
+      // 4. Calculate Distance and Filter (< 5km)
+      for (var mess in allMesses) {
+        if (mess['latitude'] != null && mess['longitude'] != null) {
+          final lat = double.tryParse(mess['latitude'].toString());
+          final lng = double.tryParse(mess['longitude'].toString());
+
+          if (lat != null && lng != null) {
+            double distanceInMeters = Geolocator.distanceBetween(
+                position.latitude, position.longitude, lat, lng
+            );
+
+            if (distanceInMeters <= 5000) { // Keep only if under 5km
+              mess['distance'] = distanceInMeters; // Save distance for UI sorting
+              nearby.add(mess);
+
+              // Add Marker to the Map
+              await _miniMapController.addMarker(
+                GeoPoint(latitude: lat, longitude: lng),
+                markerIcon: MarkerIcon(iconWidget: _buildCustomMarker()),
+              );
+            }
+          }
+        }
+      }
+
+      // Sort messes from nearest to farthest
+      nearby.sort((a, b) => a['distance'].compareTo(b['distance']));
+
+      if (mounted) {
+        setState(() { _filteredMesses = nearby; });
+      }
+
+    } catch (e) {
+      debugPrint('❌ Error loading radius data: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Widget _buildCustomMarker() {
+    return Container(
+      decoration: BoxDecoration(
+          color: Colors.lightBlueAccent.withOpacity(0.2), // Made solid so it pops over the circle
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white, width: 2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            )
+          ]
+      ),
+      child: const Center(
+        child: Icon(Icons.storefront, color: Colors.white, size: 16),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxWidth = constraints.maxWidth;
-        final maxDrag = maxWidth - 60; // 60 is height of thumb
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // --- Header ---
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Active Messes', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                Text('Within 5km pickup radius', style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500)),
+              ],
+            ),
+            TextButton(
+              onPressed: widget.onViewMapTapped,
+              child: const Text('View Map →', style: TextStyle(color: Colors.blueAccent, fontSize: 14, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
 
-        return Container(
-          height: 64,
-          width: maxWidth,
-          decoration: BoxDecoration(color: _submitted ? Colors.green : Colors.grey[200], borderRadius: BorderRadius.circular(32)),
-          child: Stack(
-            children: [
-              Center(child: Opacity(opacity: _submitted ? 0 : (1 - (_position / maxDrag)).clamp(0.0, 1.0), child: const Text('Slide to Accept Order  >>>', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 16)))),
-              if (_submitted) const Center(child: Text('ACCEPTED!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 1.5))),
-              AnimatedPositioned(
-                duration: Duration(milliseconds: _submitted ? 200 : 0),
-                curve: Curves.easeOut,
-                left: _submitted ? maxWidth - 60 : _position,
-                child: GestureDetector(
-                  onHorizontalDragUpdate: (details) {
-                    if (_submitted) return;
-                    setState(() { _position = (_position + details.delta.dx).clamp(0.0, maxDrag); });
-                  },
-                  onHorizontalDragEnd: (details) {
-                    if (_submitted) return;
-                    if (_position > maxDrag * 0.75) {
-                      setState(() { _submitted = true; _position = maxDrag; });
-                      widget.onAccept();
-                    } else {
-                      setState(() { _position = 0.0; });
-                    }
-                  },
-                  child: Container(
-                    height: 56,
-                    width: 56,
-                    margin: const EdgeInsets.all(4),
-                    decoration: BoxDecoration(color: _submitted ? Colors.white : Colors.green, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.4), blurRadius: 8, offset: const Offset(0, 4))]),
-                    child: Icon(_submitted ? Icons.check : Icons.chevron_right, color: _submitted ? Colors.green : Colors.white, size: 30),
+        // --- Mini Map Container ---
+        GestureDetector(
+          onTap: widget.onViewMapTapped, // ✅ Triggers the same action as the "View Map" text
+          child: Container(
+            height: 220,
+            width: double.infinity,
+            decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+                ]
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Stack(
+                children: [
+                  // ✅ AbsorbPointer prevents the map from stealing your tap gesture
+                  AbsorbPointer(
+                    absorbing: true,
+                    child: OSMFlutter(
+                      controller: _miniMapController,
+                      onMapIsReady: _onMapReady,
+                      osmOption: const OSMOption(
+                        userTrackingOption: UserTrackingOption(enableTracking: true, unFollowUser: false),
+                        zoomOption: ZoomOption(initZoom: 15.5, minZoomLevel: 8, maxZoomLevel: 19, stepZoom: 1.0),
+                        showDefaultInfoWindow: false,
+                        isPicker: false,
+                      ),
+                    ),
                   ),
-                ),
+                  if (_isLoading)
+                    Container(
+                      color: Colors.white.withOpacity(0.6),
+                      child: const Center(child: CircularProgressIndicator(strokeWidth: 3, color: Colors.blueAccent)),
+                    ),
+                ],
               ),
-            ],
+            ),
           ),
-        );
-      },
+        ),
+        const SizedBox(height: 16),
+
+        // --- List of Filtered Messes ---
+        if (!_isLoading && _filteredMesses.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(24),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(16)),
+            child: const Text('No active messes found within 5km.', style: TextStyle(color: Colors.grey)),
+          ),
+
+        if (_filteredMesses.isNotEmpty)
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _filteredMesses.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              final mess = _filteredMesses[index];
+              final double distanceMeters = mess['distance'] ?? 0.0;
+              final String distanceText = (distanceMeters / 1000).toStringAsFixed(1);
+
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.blue.shade50),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), shape: BoxShape.circle),
+                      child: const Icon(Icons.storefront, color: Colors.blueAccent, size: 24),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(mess['name'] ?? 'Unknown Mess', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.black87)),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              const Icon(Icons.location_on, size: 14, color: Colors.grey),
+                              const SizedBox(width: 4),
+                              Text('$distanceText km away', style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w500)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.navigation, color: Colors.blueAccent),
+                      style: IconButton.styleFrom(backgroundColor: Colors.blue.shade50),
+                      onPressed: () {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => OSMNavigationScreen(
+                          destinationLat: double.parse(mess['latitude'].toString()),
+                          destinationLng: double.parse(mess['longitude'].toString()),
+                          destinationName: mess['name'],
+                        )));
+                      },
+                    )
+                  ],
+                ),
+              );
+            },
+          )
+      ],
     );
   }
 }
