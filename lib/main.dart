@@ -65,11 +65,6 @@ class DeliveryBoyApp extends StatelessWidget {
             themeMode: ThemeMode.light,
             theme: AppTheme.lightTheme,
 
-            // 🚀 Intercepts back button globally
-            builder: (context, child) {
-              return AppBackInterceptor(child: child!);
-            },
-
             home: const SplashScreen(),
             routes: {
               '/home': (context) => const BottomNav(),
@@ -79,64 +74,6 @@ class DeliveryBoyApp extends StatelessWidget {
           );
         },
       ),
-    );
-  }
-}
-
-// --- NEW BACK BUTTON INTERCEPTOR ---
-
-class AppBackInterceptor extends StatefulWidget {
-  final Widget child;
-  const AppBackInterceptor({super.key, required this.child});
-
-  @override
-  State<AppBackInterceptor> createState() => _AppBackInterceptorState();
-}
-
-class _AppBackInterceptorState extends State<AppBackInterceptor> {
-  DateTime? _lastBackPressTime;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false, // Prevents immediate exit
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-
-        final navigator = Navigator.maybeOf(context);
-        final navController = Provider.of<NavController>(context, listen: false);
-
-        // 1. If we are deep inside a stack (like inside the KYC page), go back normally
-        if (navigator != null && navigator.canPop()) {
-          navigator.pop();
-          return;
-        }
-
-        // 2. If we are on BottomNav but NOT on the Home tab (index 0), switch to Home tab
-        if (navController.currentIndex != 0) {
-          navController.changeTab(0);
-          return;
-        }
-
-        // 3. Double-tap to exit logic for the Home tab
-        final now = DateTime.now();
-        if (_lastBackPressTime == null ||
-            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
-
-          _lastBackPressTime = now;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Press back again to exit'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        } else {
-          // Allow the app to close on the second quick tap
-          // ignore: use_build_context_synchronously
-          Navigator.of(context).pop();
-        }
-      },
-      child: widget.child,
     );
   }
 }

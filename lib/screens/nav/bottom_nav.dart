@@ -1,7 +1,8 @@
 // lib/screens/nav/bottom_nav.dart
 
-import 'dart:ui'; // Required for ImageFilter
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // REQUIRED FOR SystemNavigator.pop()
 import 'package:provider/provider.dart';
 
 import '../home/home_page.dart';
@@ -12,7 +13,6 @@ import '../auth/auth_controller.dart';
 import '../kyc/kyc_popup_dialog.dart';
 import 'package:deliveryui/screens/profile/profile_page.dart';
 
-
 class BottomNav extends StatefulWidget {
   const BottomNav({super.key});
 
@@ -22,6 +22,7 @@ class BottomNav extends StatefulWidget {
 
 class _BottomNavState extends State<BottomNav> {
   static bool _hasShownKycPopup = false;
+  DateTime? _lastBackPressTime; // ADDED FOR DOUBLE-TAP LOGIC
 
   final List<Widget> _pages = [
     const HomePage(),
@@ -29,7 +30,6 @@ class _BottomNavState extends State<BottomNav> {
     const EarningsPage(),
     const ProfilePage(),
   ];
-
 
   @override
   void initState() {
@@ -62,10 +62,91 @@ class _BottomNavState extends State<BottomNav> {
   Widget build(BuildContext context) {
     return Consumer<NavController>(
       builder: (context, nav, _) {
-        return Scaffold(
-          extendBody: true,
-          body: _pages[nav.currentIndex],
-          bottomNavigationBar: _buildShinyGlassNav(context, nav),
+        // WRAP SCAFFOLD IN POPSCOPE HERE
+        return PopScope(
+          canPop: false, // Prevents immediate exit
+          onPopInvokedWithResult: (didPop, result) async {
+            if (didPop) return;
+
+            // 1. If NOT on the Home tab (index 0), switch to Home tab
+            if (nav.currentIndex != 0) {
+              nav.changeTab(0);
+              return;
+            }
+
+            // 2. Double-tap to exit logic for the Home tab
+            final now = DateTime.now();
+            if (_lastBackPressTime == null ||
+                now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+
+              _lastBackPressTime = now;
+
+              // CLEAR any existing snackbars first so they don't stack up
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  elevation: 0, // Remove default shadow
+                  behavior: SnackBarBehavior.floating, // Make it float above the UI
+                  backgroundColor: Colors.transparent, // Make the default background invisible
+                  margin: const EdgeInsets.only(bottom: 110, left: 32, right: 32), // Position it above the BottomNav
+                  content: ClipRRect(
+                    borderRadius: BorderRadius.circular(25), // Smooth rounded corners
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15), // The glass blur
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+                        decoration: BoxDecoration(
+                          // Match your bottom nav gradient
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.white.withOpacity(0.9),
+                              Colors.white.withOpacity(0.6),
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                          borderRadius: BorderRadius.circular(25),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.8), // Crisp white border
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.exit_to_app_rounded,
+                              color: Colors.grey.shade800, // Dark grey to contrast with the light glass
+                              size: 22,
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Press back again to exit',
+                              style: TextStyle(
+                                color: Colors.grey.shade800,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            } else {
+              // Reliably closes the app
+              SystemNavigator.pop();
+            }
+          },
+          child: Scaffold(
+            extendBody: true,
+            body: _pages[nav.currentIndex],
+            bottomNavigationBar: _buildShinyGlassNav(context, nav),
+          ),
         );
       },
     );
@@ -82,7 +163,7 @@ class _BottomNavState extends State<BottomNav> {
           borderRadius: BorderRadius.circular(35),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.15), // Deep shadow for depth
+              color: Colors.black.withOpacity(0.15),
               blurRadius: 25,
               offset: const Offset(0, 10),
             ),
@@ -91,28 +172,25 @@ class _BottomNavState extends State<BottomNav> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(35),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Strong Blur
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
             child: Container(
               decoration: BoxDecoration(
-                // THE SHINY GLASS GRADIENT
                 gradient: LinearGradient(
                   colors: [
-                    Colors.white.withOpacity(0.9), // Top is brighter (Light source)
-                    Colors.white.withOpacity(0.6), // Bottom is more transparent
+                    Colors.white.withOpacity(0.9),
+                    Colors.white.withOpacity(0.6),
                   ],
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                 ),
                 borderRadius: BorderRadius.circular(35),
-                // THE CRISP WHITE BORDER
                 border: Border.all(
-                  color: Colors.white.withOpacity(0.8), // Semi-transparent white border
+                  color: Colors.white.withOpacity(0.8),
                   width: 1.5,
                 ),
               ),
               child: Stack(
                 children: [
-                  // 1. FLUID INDICATOR
                   AnimatedAlign(
                     duration: const Duration(milliseconds: 500),
                     curve: Curves.fastLinearToSlowEaseIn,
@@ -129,7 +207,7 @@ class _BottomNavState extends State<BottomNav> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: const LinearGradient(
-                              colors: [Color(0xFF43A047), Color(0xFF1B5E20)], // Green Gradient
+                              colors: [Color(0xFF43A047), Color(0xFF1B5E20)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -145,8 +223,6 @@ class _BottomNavState extends State<BottomNav> {
                       ),
                     ),
                   ),
-
-                  // 2. ICONS
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
@@ -183,7 +259,7 @@ class _BottomNavState extends State<BottomNav> {
               child: Icon(
                 isSelected ? activeIcon : icon,
                 key: ValueKey<bool>(isSelected),
-                color: isSelected ? Colors.white : Colors.grey.shade700, // Darker grey for contrast on glass
+                color: isSelected ? Colors.white : Colors.grey.shade700,
                 size: 26,
               ),
             ),

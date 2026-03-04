@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -321,7 +322,7 @@ class _HomePageState extends State<HomePage> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    _SwipeToggleButton(isOnline: isOnline, onToggle: home.isLoading ? null : home.toggleOnline),
+                    SwipeToggleButton(isOnline: isOnline, onToggle: home.isLoading ? null : home.toggleOnline),
                   ],
                 ),
               ),
@@ -351,7 +352,6 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Hardcoded Shree Kitchen is REMOVED.
                       // Added dynamic 5km radius map and list section.
                       NearbyMessesSection(
                         onViewMapTapped: () {
@@ -394,63 +394,185 @@ class _HomePageState extends State<HomePage> {
 }
 
 // ===== SWIPE TOGGLE BUTTON =====
-class _SwipeToggleButton extends StatefulWidget {
+class SwipeToggleButton extends StatefulWidget {
   final bool isOnline;
   final VoidCallback? onToggle;
-  const _SwipeToggleButton({required this.isOnline, required this.onToggle});
+
+  const SwipeToggleButton({
+    super.key,
+    required this.isOnline,
+    required this.onToggle,
+  });
 
   @override
-  State<_SwipeToggleButton> createState() => _SwipeToggleButtonState();
+  State<SwipeToggleButton> createState() => _SwipeToggleButtonState();
 }
-class _SwipeToggleButtonState extends State<_SwipeToggleButton> {
+
+class _SwipeToggleButtonState extends State<SwipeToggleButton> {
   double dragPosition = 0.0;
   bool isDragging = false;
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width - 40;
-    const height = 54.0;
-    final thumbWidth = screenWidth / 2;
-    final maxDrag = screenWidth - thumbWidth;
-    final targetPosition = widget.isOnline ? maxDrag : 0.0;
-    final currentPosition = isDragging ? dragPosition : targetPosition;
-    final dragPercentage = (currentPosition / maxDrag).clamp(0.0, 1.0);
-    final backgroundColor = Color.lerp(Colors.red.shade400, Colors.green.shade600, dragPercentage)!;
     final canToggle = widget.onToggle != null;
 
     return Opacity(
       opacity: canToggle ? 1.0 : 0.6,
-      child: Container(
-        height: height, width: screenWidth,
-        decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(30), boxShadow: [BoxShadow(color: backgroundColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 4))], border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5)),
-        child: Stack(
-          children: [
-            Row(
-              children: [
-                Expanded(child: Center(child: AnimatedOpacity(opacity: !widget.isOnline && !isDragging ? 1.0 : 0.5, duration: const Duration(milliseconds: 200), child: const Text('Offline', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))))),
-                Expanded(child: Center(child: AnimatedOpacity(opacity: widget.isOnline && !isDragging ? 1.0 : 0.5, duration: const Duration(milliseconds: 200), child: const Text('Online', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15))))),
+      // 1. LayoutBuilder ensures the widget fits its parent perfectly
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Fallback to screen width if constraints are unbounded
+          final maxWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : MediaQuery.of(context).size.width - 40;
+
+          const height = 54.0;
+          final thumbWidth = maxWidth / 2;
+          final maxDrag = maxWidth - thumbWidth;
+
+          final targetPosition = widget.isOnline ? maxDrag : 0.0;
+          final currentPosition = isDragging ? dragPosition : targetPosition;
+          final dragPercentage = (currentPosition / maxDrag).clamp(0.0, 1.0);
+
+          final backgroundColor = Color.lerp(
+            Colors.red.shade400,
+            Colors.green.shade600,
+            dragPercentage,
+          )!;
+
+          return Container(
+            height: height,
+            width: maxWidth,
+            decoration: BoxDecoration(
+              color: backgroundColor,
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: [
+                BoxShadow(
+                  color: backgroundColor.withOpacity(0.4),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
               ],
-            ),
-            AnimatedPositioned(
-              duration: isDragging ? Duration.zero : const Duration(milliseconds: 300), curve: Curves.easeOutBack, left: currentPosition, top: 2, bottom: 2,
-              child: GestureDetector(
-                onHorizontalDragStart: canToggle ? (_) => setState(() { isDragging = true; dragPosition = targetPosition; }) : null,
-                onHorizontalDragUpdate: canToggle ? (d) => setState(() { dragPosition = (dragPosition + d.delta.dx).clamp(0.0, maxDrag); }) : null,
-                onHorizontalDragEnd: canToggle ? (_) => setState(() {
-                  isDragging = false;
-                  if (dragPosition > maxDrag / 2 && !widget.isOnline) widget.onToggle?.call();
-                  else if (dragPosition < maxDrag / 2 && widget.isOnline) widget.onToggle?.call();
-                  else dragPosition = widget.isOnline ? maxDrag : 0.0;
-                }) : null,
-                onTap: canToggle ? () { if (!isDragging) widget.onToggle?.call(); } : null,
-                child: Container(
-                  width: thumbWidth - 4, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(26), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 4, offset: const Offset(0, 2))]),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(widget.isOnline ? Icons.verified_user : Icons.power_settings_new, color: backgroundColor, size: 20), const SizedBox(width: 8), Text(widget.isOnline ? 'Online' : 'Offline', style: TextStyle(color: backgroundColor, fontWeight: FontWeight.bold, fontSize: 14))]),
-                ),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 1.5,
               ),
             ),
-          ],
-        ),
+            child: Stack(
+              children: [
+                // --- BACKGROUND TEXT ---
+                Row(
+                  children: [
+                    Expanded(
+                      child: Center(
+                        child: AnimatedOpacity(
+                          opacity: !widget.isOnline && !isDragging ? 1.0 : 0.5,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Text(
+                            'Offline',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Center(
+                        child: AnimatedOpacity(
+                          opacity: widget.isOnline && !isDragging ? 1.0 : 0.5,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Text(
+                            'Online',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // --- DRAGGABLE THUMB ---
+                AnimatedPositioned(
+                  duration: isDragging ? Duration.zero : const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack, // Gives a nice little bounce when it snaps
+                  left: currentPosition,
+                  top: 2,
+                  bottom: 2,
+                  child: GestureDetector(
+                    onHorizontalDragStart: canToggle
+                        ? (_) => setState(() {
+                      isDragging = true;
+                      dragPosition = targetPosition;
+                    })
+                        : null,
+                    onHorizontalDragUpdate: canToggle
+                        ? (details) => setState(() {
+                      dragPosition = (dragPosition + details.delta.dx).clamp(0.0, maxDrag);
+                    })
+                        : null,
+                    onHorizontalDragEnd: canToggle
+                        ? (_) {
+                      setState(() {
+                        isDragging = false;
+                        // 2. Added HapticFeedback for a premium tactile feel
+                        if (dragPosition > maxDrag / 2 && !widget.isOnline) {
+                          HapticFeedback.lightImpact();
+                          widget.onToggle?.call();
+                        } else if (dragPosition < maxDrag / 2 && widget.isOnline) {
+                          HapticFeedback.lightImpact();
+                          widget.onToggle?.call();
+                        } else {
+                          dragPosition = widget.isOnline ? maxDrag : 0.0;
+                        }
+                      });
+                    }
+                        : null,
+                    onTap: canToggle
+                        ? () {
+                      if (!isDragging) {
+                        HapticFeedback.lightImpact();
+                        widget.onToggle?.call();
+                      }
+                    }
+                        : null,
+                    child: Container(
+                      width: thumbWidth - 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(26),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.15),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          )
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            widget.isOnline ? Icons.verified_user : Icons.power_settings_new,
+                            color: backgroundColor,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            widget.isOnline ? 'Online' : 'Offline',
+                            style: TextStyle(
+                              color: backgroundColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
