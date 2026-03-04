@@ -1,7 +1,6 @@
 name: deliveryui
 description: "Tiffinity Delivery Partner App"
 publish_to: 'none'
-
 version: 1.0.0+1
 
 environment:
@@ -25,57 +24,36 @@ dependencies:
   path_provider: ^2.1.2
   path: ^1.9.0
   image: ^4.1.7
-  lottie: ^3.0.0  # for animations
+  lottie: ^3.0.0
   get: ^4.6.6
   slide_to_act: ^2.0.1
   latlong2: ^0.9.0
   cached_network_image: ^3.3.1
 
-
 dev_dependencies:
-  flutter_native_splash: ^2.3.5
   flutter_test:
     sdk: flutter
-  flutter_launcher_icons: ^0.13.1
   flutter_lints: ^6.0.0
+  flutter_native_splash: ^2.3.5
+  flutter_launcher_icons: ^0.13.1
 
-flutter:
-  uses-material-design: true
-
-  # Add assets folder
-  assets:
-    - assets/icon/
-
-# App Icon Configuration
+# Ensure these are at the very left margin (no spaces)
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: "assets/icon/delivery_icon.png"
-  ios_content_padding: 2
-  background_color_ios: "#FFFFFF"
+  adaptive_icon_background: "#FFFFFF"
+  adaptive_icon_foreground: "assets/icon/delivery_icon.png"
   min_sdk_android: 21
 
-  # Adaptive icon for better Android appearance
-  adaptive_icon_background: "#FFFFFF"  # Changed to White background
-  adaptive_icon_foreground: "assets/icon/delivery_icon.png"
-
-# Native Splash Screen Configuration
 flutter_native_splash:
-  color: "#FFFFFF"  # Changed to White background
-  image: assets/icon/delivery_icon.png
-
-# Android Splash Screen Configuration
-android_splash:
-  android: true
-  ios: true
-
-  # Android 12+ specific splash
+  color: "#FFFFFF"
+  image: "assets/icon/delivery_icon.png"
   android_12:
     color: "#FFFFFF"
-    image: assets/icon/delivery_icon.png
+    image: "assets/icon/delivery_icon.png"
 
-  # iOS specific
-  ios_content_mode: center
-
-  # Web support (optional)
-  web: false
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/icon/  # Changed to directory path for better compatibility
