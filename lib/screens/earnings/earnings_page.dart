@@ -24,14 +24,11 @@ class _EarningsPageState extends State<EarningsPage> {
     });
   }
 
-  // ✅ Extract fetch logic to reuse
   void _fetchEarnings() {
     final auth = context.read<AuthController>();
     final partnerId = auth.getCurrentUserId() ?? '';
     if (partnerId.isNotEmpty) {
-      context
-          .read<EarningsController>()
-          .fetchEarnings(partnerId, period: _period);
+      context.read<EarningsController>().fetchEarnings(partnerId, period: _period);
     }
   }
 
@@ -41,14 +38,11 @@ class _EarningsPageState extends State<EarningsPage> {
     _fetchEarnings();
   }
 
-  // ✅ Pull-to-refresh handler
   Future<void> _onRefresh() async {
-    print('🔄 [EARNINGS] Manual refresh triggered');
     _fetchEarnings();
     await Future.delayed(const Duration(milliseconds: 500));
   }
 
-  // ✅ Withdraw Dialog
   void _showWithdrawDialog(BuildContext context, EarningsController controller) {
     final TextEditingController amountController = TextEditingController();
 
@@ -56,20 +50,33 @@ class _EarningsPageState extends State<EarningsPage> {
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Request Withdrawal'),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Request Withdrawal', style: TextStyle(fontWeight: FontWeight.bold)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Available Balance: ₹${controller.availableBalance.toStringAsFixed(2)}'),
-              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    const Icon(Icons.account_balance_wallet, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Text('Available: ₹${controller.availableBalance.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w600, color: Colors.green)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
               TextField(
                 controller: amountController,
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 decoration: InputDecoration(
-                  labelText: 'Amount to withdraw (₹)',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  prefixIcon: const Icon(Icons.currency_rupee),
+                  labelText: 'Amount (₹)',
+                  labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.green, width: 2)),
+                  prefixIcon: const Icon(Icons.currency_rupee, color: Colors.black87),
                 ),
               ),
             ],
@@ -77,38 +84,32 @@ class _EarningsPageState extends State<EarningsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              child: Text('Cancel', style: TextStyle(color: Colors.grey.shade600)),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
               onPressed: () async {
                 final amount = double.tryParse(amountController.text) ?? 0.0;
-
                 if (amount <= 0 || amount > controller.availableBalance) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Invalid amount'), backgroundColor: Colors.red),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid amount'), backgroundColor: Colors.red));
                   return;
                 }
-
-                Navigator.pop(ctx); // Close dialog
-
-                // Trigger request
+                Navigator.pop(ctx);
                 final auth = context.read<AuthController>();
                 final partnerId = auth.getCurrentUserId() ?? '';
                 final success = await controller.requestWithdrawal(partnerId, amount);
 
                 if (success && mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Withdrawal requested successfully!'), backgroundColor: Colors.green),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Withdrawal requested successfully!'), backgroundColor: Colors.green));
                 } else if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(controller.error ?? 'Request failed'), backgroundColor: Colors.red),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(controller.error ?? 'Request failed'), backgroundColor: Colors.red));
                 }
               },
-              child: const Text('Confirm', style: TextStyle(color: Colors.white)),
+              child: const Text('Confirm', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ],
         );
@@ -120,299 +121,257 @@ class _EarningsPageState extends State<EarningsPage> {
   Widget build(BuildContext context) {
     final controller = context.watch<EarningsController>();
 
-    if (controller.isLoading && controller.totalEarnings == 0) {
-      return const Scaffold(
-        backgroundColor: Color(0xFFF8F9FA),
-        body: Center(child: CircularProgressIndicator(color: Colors.green)),
-      );
+    if (controller.isLoading && controller.totalEarnings == 0 && controller.walletBalance == 0) {
+      return const Scaffold(backgroundColor: Color(0xFFF8F9FA), body: Center(child: CircularProgressIndicator(color: Colors.green)));
     }
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF5F7FA), // Softer background
       body: RefreshIndicator(
         onRefresh: _onRefresh,
-        color: const Color(0xFF43A047),
+        color: Colors.green,
         child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            // Header + Today card + period filters + Wallet
             SliverToBoxAdapter(
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF43A047), Color(0xFF66BB6A)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Green Header Background
+                  Container(
+                    height: 220,
+                    width: double.infinity,
+                    padding: const EdgeInsets.only(left: 20, right: 20, top: 60),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(colors: [Color(0xFF2E7D32), Color(0xFF4CAF50)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                      borderRadius: BorderRadius.only(bottomLeft: Radius.circular(30), bottomRight: Radius.circular(30)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('My Dashboard', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)),
+                        IconButton(onPressed: _onRefresh, icon: const Icon(Icons.refresh, color: Colors.white)),
+                      ],
+                    ),
                   ),
-                  borderRadius: BorderRadius.only(
-                    bottomLeft: Radius.circular(30),
-                    bottomRight: Radius.circular(30),
-                  ),
-                ),
-                child: SafeArea(
-                  bottom: false,
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 16,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Earnings & Wallet',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: _onRefresh,
-                              icon: const Icon(Icons.refresh, color: Colors.white, size: 26),
-                            ),
-                          ],
-                        ),
-                      ),
 
-                      // Today's Earnings Card
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 28,
-                            horizontal: 24,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.08),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF43A047).withOpacity(0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.today,
-                                  color: Color(0xFF43A047),
-                                  size: 32,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                _getPeriodLabel(),
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                  letterSpacing: 0.3,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                "₹ ${controller.totalEarnings.toStringAsFixed(0)}",
-                                style: const TextStyle(
-                                  color: Colors.black87,
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 10,
-                                  horizontal: 16,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF43A047).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(
-                                      Icons.trending_up,
-                                      color: Color(0xFF43A047),
-                                      size: 18,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      "${controller.totalDeliveries} deliveries",
-                                      style: const TextStyle(
-                                        color: Color(0xFF43A047),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      "• Avg ₹${controller.avgPerDelivery.toStringAsFixed(0)}",
-                                      style: TextStyle(
-                                        color: Colors.grey[700],
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                  // Main Wallet Card (Overlapping)
+                  Positioned(
+                    top: 120,
+                    left: 20,
+                    right: 20,
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
                       ),
-
-                      // Period filter buttons
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                        child: Row(
-                          children: [
-                            _periodChip('today', 'Today'),
-                            const SizedBox(width: 8),
-                            _periodChip('week', 'This Week'),
-                            const SizedBox(width: 8),
-                            _periodChip('month', 'This Month'),
-                            const SizedBox(width: 8),
-                            _periodChip('all', 'All Time'),
-                          ],
-                        ),
-                      ),
-
-                      // ✅ WALLET BALANCE SECTION (NEW)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                        child: Container(
-                          padding: const EdgeInsets.all(20),
-                          decoration: BoxDecoration(
-                            color: Colors.black87,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.2),
-                                blurRadius: 10,
-                                offset: const Offset(0, 5),
-                              ),
-                            ],
-                          ),
-                          child: Row(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Available to Withdraw', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                                  Text('Available Balance', style: TextStyle(color: Colors.grey.shade600, fontSize: 14, fontWeight: FontWeight.w500)),
                                   const SizedBox(height: 4),
-                                  Text(
-                                      '₹${controller.availableBalance.toStringAsFixed(0)}',
-                                      style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold)
-                                  ),
-                                  if (controller.lockedBalance > 0)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 4.0),
-                                      child: Text('Pending: ₹${controller.lockedBalance.toStringAsFixed(0)}', style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
-                                    ),
+                                  Text('₹${controller.availableBalance.toStringAsFixed(0)}', style: const TextStyle(color: Colors.black87, fontSize: 36, fontWeight: FontWeight.w800, letterSpacing: -1)),
                                 ],
                               ),
-                              ElevatedButton(
-                                onPressed: controller.availableBalance > 0
-                                    ? () => _showWithdrawDialog(context, controller)
-                                    : null,
-                                style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))
-                                ),
-                                child: const Text('Withdraw', style: TextStyle(fontWeight: FontWeight.bold)),
-                              ),
+                              Container(
+                                decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle),
+                                padding: const EdgeInsets.all(12),
+                                child: const Icon(Icons.account_balance_wallet, color: Colors.green, size: 28),
+                              )
                             ],
                           ),
-                        ),
+                          if (controller.lockedBalance > 0) ...[
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(20)),
+                              child: Text('Pending Withdrawal: ₹${controller.lockedBalance.toStringAsFixed(0)}', style: TextStyle(color: Colors.orange.shade800, fontSize: 12, fontWeight: FontWeight.w600)),
+                            )
+                          ],
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: controller.availableBalance > 0 ? () => _showWithdrawDialog(context, controller) : null,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF1B5E20),
+                                disabledBackgroundColor: Colors.grey.shade300,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                elevation: 0,
+                              ),
+                              child: const Text('Withdraw Funds', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Spacer for overlapping card
+            const SliverToBoxAdapter(child: SizedBox(height: 120)),
+
+            // Period Filters
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(16)),
+                  child: Row(
+                    children: [
+                      _periodChip('today', 'Today'),
+                      _periodChip('week', 'Week'),
+                      _periodChip('month', 'Month'),
+                      _periodChip('all', 'All'),
                     ],
                   ),
                 ),
               ),
             ),
 
-            // Toggle between Recent Activity and Statements
+            // Metrics Row (Earnings & Deliveries)
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+                padding: const EdgeInsets.all(20),
                 child: Row(
                   children: [
-                    Container(
-                      width: 4,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        borderRadius: BorderRadius.circular(2),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)), child: Icon(Icons.payments_outlined, color: Colors.blue.shade700, size: 24)),
+                            const SizedBox(height: 16),
+                            Text('₹${controller.totalEarnings.toStringAsFixed(0)}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87)),
+                            const SizedBox(height: 4),
+                            Text(_period == 'all' ? 'Total Earnings' : 'Earnings', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      _showStatements ? 'Wallet Statements' : 'Recent Activity',
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.purple.shade50, borderRadius: BorderRadius.circular(12)), child: Icon(Icons.local_shipping_outlined, color: Colors.purple.shade700, size: 24)),
+                            const SizedBox(height: 16),
+                            Text('${controller.totalDeliveries}', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87)),
+                            const SizedBox(height: 4),
+                            Text('Deliveries', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                          ],
+                        ),
                       ),
                     ),
-                    const Spacer(),
-                    // Toggle Button
-                    TextButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _showStatements = !_showStatements;
-                        });
-                      },
-                      icon: Icon(_showStatements ? Icons.list_alt : Icons.account_balance_wallet, size: 16, color: Colors.green),
-                      label: Text(_showStatements ? 'View Orders' : 'View Ledger', style: const TextStyle(color: Colors.green)),
-                    )
                   ],
                 ),
               ),
             ),
 
-            // Dynamic List (Orders vs Statements)
-            if (_showStatements)
-              _buildStatementsList(controller)
-            else
-              _buildRecentOrdersList(controller),
-
-            SliverPadding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).padding.bottom + 80,
+            // Tab Toggle (Orders vs Ledger)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  children: [
+                    _tabButton(title: 'Recent Orders', isActive: !_showStatements, onTap: () => setState(() => _showStatements = false)),
+                    const SizedBox(width: 16),
+                    _tabButton(title: 'Wallet Ledger', isActive: _showStatements, onTap: () => setState(() => _showStatements = true)),
+                  ],
+                ),
               ),
             ),
+
+            // Dynamic List
+            if (_showStatements) _buildStatementsList(controller) else _buildRecentOrdersList(controller),
+
+            SliverPadding(padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 80)),
           ],
         ),
       ),
     );
   }
 
-  // ✅ Extracted Orders List for cleaner code
+  // Segmented Control Tab Button
+  Widget _tabButton({required String title, required bool isActive, required VoidCallback onTap}) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: isActive ? Colors.green : Colors.transparent, width: 3)),
+          ),
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.w600,
+              color: isActive ? Colors.green : Colors.grey.shade500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _periodChip(String value, String label) {
+    final bool selected = _period == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => _changePeriod(value),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: selected ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))] : [],
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: selected ? Colors.black87 : Colors.grey.shade600,
+                fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildRecentOrdersList(EarningsController controller) {
     if (controller.recent.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 40),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.history, size: 64, color: Colors.grey[300]),
+              Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade300),
               const SizedBox(height: 16),
-              Text("No recent transactions", style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+              Text("No deliveries in this period", style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
             ],
           ),
         ),
@@ -423,47 +382,24 @@ class _EarningsPageState extends State<EarningsPage> {
       delegate: SliverChildBuilderDelegate(
             (context, index) {
           final item = controller.recent[index];
-          final amount = (item['total_amount'] ?? item['amount'] ?? 0).toString();
+          final amount = (item['amount'] ?? 0).toString();
           final title = 'Order #${item['id'] ?? ''}';
           final customer = (item['customer_name'] ?? 'Customer').toString();
-          final address = (item['delivery_address'] ?? '').toString();
           final time = (item['time'] ?? '').toString();
 
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
             child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3)),
-                ],
-              ),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
               child: ListTile(
-                title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 4),
-                    Text(customer, style: const TextStyle(fontSize: 13)),
-                    const SizedBox(height: 2),
-                    Text(
-                      address,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Icon(Icons.access_time, size: 14, color: Colors.grey[500]),
-                        const SizedBox(width: 4),
-                        Text(time, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                      ],
-                    ),
-                  ],
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                leading: CircleAvatar(
+                  backgroundColor: Colors.green.shade50,
+                  child: const Icon(Icons.check_circle, color: Colors.green, size: 20),
                 ),
-                trailing: Text('₹$amount', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.green)),
+                title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: Text('$customer • $time', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                trailing: Text('+₹$amount', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
               ),
             ),
           );
@@ -473,18 +409,16 @@ class _EarningsPageState extends State<EarningsPage> {
     );
   }
 
-  // ✅ New Statements List view
   Widget _buildStatementsList(EarningsController controller) {
     if (controller.statements.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 40),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.receipt_long, size: 64, color: Colors.grey[300]),
+              Icon(Icons.account_balance_wallet_outlined, size: 64, color: Colors.grey.shade300),
               const SizedBox(height: 16),
-              Text("No ledger history found", style: TextStyle(color: Colors.grey[500], fontSize: 15)),
+              Text("No ledger history found", style: TextStyle(color: Colors.grey.shade500, fontSize: 15)),
             ],
           ),
         ),
@@ -503,83 +437,34 @@ class _EarningsPageState extends State<EarningsPage> {
 
           final isCredit = credit > 0;
           final amountStr = isCredit ? '+₹${credit.toStringAsFixed(0)}' : '-₹${debit.toStringAsFixed(0)}';
-          final color = isCredit ? Colors.green : Colors.red;
+          final color = isCredit ? Colors.green : Colors.red.shade600;
 
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
             child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 3)),
-                ],
-              ),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
               child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 leading: CircleAvatar(
-                  backgroundColor: color.withOpacity(0.1),
-                  child: Icon(isCredit ? Icons.arrow_downward : Icons.arrow_upward, color: color, size: 18),
+                  backgroundColor: isCredit ? Colors.green.shade50 : Colors.red.shade50,
+                  child: Icon(isCredit ? Icons.south_west : Icons.north_east, color: color, size: 18),
                 ),
-                title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (desc.isNotEmpty) Text(desc, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                    Text(date, style: TextStyle(fontSize: 11, color: Colors.grey[400])),
+                    if (desc.isNotEmpty) const SizedBox(height: 2),
+                    if (desc.isNotEmpty) Text(desc, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    const SizedBox(height: 4),
+                    Text(date, style: TextStyle(fontSize: 11, color: Colors.grey.shade400)),
                   ],
                 ),
-                trailing: Text(amountStr, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: color)),
+                trailing: Text(amountStr, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: color)),
               ),
             ),
           );
         },
         childCount: controller.statements.length,
-      ),
-    );
-  }
-
-  // ✅ Helper to get period label
-  String _getPeriodLabel() {
-    switch (_period) {
-      case 'today':
-        return "Today's Earnings";
-      case 'week':
-        return "This Week's Earnings";
-      case 'month':
-        return "This Month's Earnings";
-      case 'all':
-        return "Total Earnings";
-      default:
-        return "Earnings";
-    }
-  }
-
-  Widget _periodChip(String value, String label) {
-    final bool selected = _period == value;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () => _changePeriod(value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected ? Colors.white : Colors.white.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: selected ? Colors.white : Colors.white70,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                color: selected ? const Color(0xFF43A047) : Colors.white,
-                fontWeight: selected ? FontWeight.bold : FontWeight.w500,
-                fontSize: 13,
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
