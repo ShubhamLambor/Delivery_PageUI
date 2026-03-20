@@ -23,14 +23,14 @@ class OrderTrackingController extends ChangeNotifier {
   String get status => order?.status.toLowerCase() ?? '';
   String get assignmentStatus => order?.assignmentStatus.toLowerCase() ?? '';
 
-  // (confirmed OR ready) + accepted/assigned => waiting stage
+  // ✅ ADDED 'accepted' and 'pending' to the allowed statuses
   bool get isAtWaiting =>
-      (status == 'confirmed' || status == 'ready') &&
-          (assignmentStatus == 'accepted' || assignmentStatus == 'assigned');
+      (status == 'confirmed' || status == 'ready' || status == 'accepted' || status == 'pending') &&
+          (assignmentStatus == 'accepted' || assignmentStatus == 'assigned' || assignmentStatus == 'pending' || assignmentStatus.isEmpty);
 
   // (confirmed OR ready) + at_pickup => at pickup stage
   bool get isAtPickup =>
-      (status == 'confirmed' || status == 'ready') &&
+      (status == 'confirmed' || status == 'ready' || status == 'accepted') &&
           (assignmentStatus == 'at_pickup' ||
               assignmentStatus == 'at_pickup_location');
 

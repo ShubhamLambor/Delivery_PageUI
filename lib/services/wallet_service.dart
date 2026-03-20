@@ -42,6 +42,8 @@ class WalletService {
   /// Request a Withdrawal
   static Future<Map<String, dynamic>> requestWithdrawal(String partnerId, double amount) async {
     try {
+      debugPrint('💸 [WALLET_SERVICE] Requesting withdrawal: ₹$amount for $partnerId');
+
       final response = await http.post(
         Uri.parse('$baseUrl/transactions/payment_request.php'),
         headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -52,12 +54,25 @@ class WalletService {
         },
       );
 
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
+      // ✅ Print the raw response from PHP to figure out exactly what failed
+      debugPrint('📥 [WALLET_SERVICE] Withdraw Response [${response.statusCode}]: ${response.body}');
+
+      // Try to parse the JSON regardless of the status code.
+      // If PHP throws an error (like "Pending request exists"), it might send a 400/500 status code.
+      try {
+        final decoded = jsonDecode(response.body);
+        return decoded;
+      } catch (e) {
+        // Fallback if PHP returns raw HTML or crashes instead of sending JSON
+        return {
+          'success': false,
+          'message': 'Server error (Code: ${response.statusCode})'
+        };
       }
-      return {'success': false, 'message': 'Server error'};
+
     } catch (e) {
-      return {'success': false, 'message': 'Network error'};
+      debugPrint('❌ [WALLET_SERVICE] Withdraw Exception: $e');
+      return {'success': false, 'message': 'Network connection failed'};
     }
   }
 
@@ -78,13 +93,15 @@ class WalletService {
         },
       ).timeout(const Duration(seconds: 10));
 
-      // ✅ THIS IS THE MAGIC LINE: It will print exactly what your PHP file is saying!
       print('📥 [WALLET_SERVICE] RAW PHP RESPONSE: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['success'] == true) {
-          final List list = data['data'] ?? [];
+
+          // ✅ FIXED: Changed 'data' to 'withdrawals' to match your PHP backend!
+          final List list = data['withdrawals'] ?? [];
+
           print('✅ [WALLET_SERVICE] Successfully parsed ${list.length} records.');
           return list;
         } else {

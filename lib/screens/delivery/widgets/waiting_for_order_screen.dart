@@ -20,8 +20,10 @@ class WaitingForOrderScreen extends StatelessWidget {
   bool get _canReachPickup {
     final s = order.status.toLowerCase();
     final a = order.assignmentStatus.toLowerCase();
-    return (s == 'confirmed' || s == 'ready') &&
-        (a == 'accepted' || a == 'assigned');
+
+    // ✅ ADDED 'accepted' and 'pending' to the allowed statuses so the button shows up!
+    return (s == 'confirmed' || s == 'ready' || s == 'accepted' || s == 'pending') &&
+        (a == 'accepted' || a == 'assigned' || a == 'pending' || a.isEmpty);
   }
 
   @override
