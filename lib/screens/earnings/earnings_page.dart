@@ -230,7 +230,9 @@ class _EarningsPageState extends State<EarningsPage> {
                           const SnackBar(content: Text('Withdrawal request submitted!'), backgroundColor: Colors.green),
                         );
                       } else if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        ScaffoldMessenger.of(
+
+                            context).showSnackBar(
                           SnackBar(content: Text(controller.error ?? 'Request failed'), backgroundColor: Colors.red),
                         );
                       }
