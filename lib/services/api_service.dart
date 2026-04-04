@@ -124,6 +124,7 @@ class ApiService {
   }
 
   /// Update delivery partner location
+  /// Update delivery partner location
   static Future<Map<String, dynamic>> updateLocation({
     required String partnerId,
     required double latitude,
@@ -172,7 +173,12 @@ class ApiService {
             };
           }
         } catch (e) {
-          debugPrint('⚠️ JSON Parse Error: $e');
+          debugPrint('! JSON Parse Error: $e');
+
+          // 👇 THIS IS THE MAGIC LINE WE ADDED 👇
+          // It will print the exact HTML/PHP error your server is throwing
+          debugPrint('! RAW PHP ERROR: \n${response.body}');
+
           return {
             'success': false,
             'message': 'Invalid server response',
