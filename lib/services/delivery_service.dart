@@ -949,7 +949,4 @@ class DeliveryService {
     }
   }
 
-// NOTE: verifyDeliveryOtp has been completely removed because the OTP
-// is now passed to markDelivered() and securely verified directly on
-// the backend during the 'delivered' action call.
 }
