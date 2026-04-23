@@ -202,19 +202,41 @@ class DeliveryService {
     );
   }
 
-  /// 2. Reject / Cancel Order
+  /// 2. Reject / Cancel Order (Routes directly to reject_assignment.php)
   static Future<Map<String, dynamic>> rejectOrder({
     required String orderId,
     required String deliveryPartnerId,
     String? reason,
   }) async {
     debugPrint('❌ Rejecting order...');
-    return _updateStatus(
-      action: 'cancelled', // match backend if it uses this case
-      orderId: orderId,
-      deliveryPartnerId: deliveryPartnerId,
-      reason: reason ?? 'No reason provided',
-    );
+
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/delivery/reject_assignment.php'), // 👈 Hits our brand new file!
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+        body: {
+          'order_id': orderId,
+          'delivery_partner_id': deliveryPartnerId,
+          'reason': reason ?? 'Declined by delivery boy',
+        },
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final jsonData = jsonDecode(response.body);
+        return {
+          'success': jsonData['success'] ?? false,
+          'message': jsonData['message'] ?? 'Order rejected',
+        };
+      } else {
+        return {'success': false, 'message': 'Server error: ${response.statusCode}'};
+      }
+    } catch (e) {
+      debugPrint('❌ Reject API Error: $e');
+      return {'success': false, 'message': 'Failed to reject order.'};
+    }
   }
 
   /// 3. Mark Reached Pickup Location -> action = 'reached_pickup'
