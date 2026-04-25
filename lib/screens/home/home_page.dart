@@ -138,13 +138,52 @@ class _HomePageState extends State<HomePage> {
     final uid = auth.getCurrentUserId() ?? '';
 
     await showModalBottomSheet(
-      context: context, isScrollControlled: true, isDismissible: false, enableDrag: false, backgroundColor: Colors.transparent,
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
       builder: (ctx) => NewOrderSheet(
-        order: order,
-        onAccept: () async { Navigator.pop(ctx); await _handleAcceptOrderFlow(order, uid); },
-        onReject: () async { Navigator.pop(ctx); await _handleRejectOrderFlow(order.id, uid); },
+          order: order,
+          onAccept: () async {
+            Navigator.pop(ctx);
+            await _handleAcceptOrderFlow(order, uid);
+          },
+          onReject: () async {
+            Navigator.pop(ctx);
+            await _handleRejectOrderFlow(order.id, uid);
+          },
+          // ✅ NEW: Triggered automatically when 30 seconds run out
+          onTimeout: () async {
+            Navigator.pop(ctx);
+            await _handleAutoRejectFlow(order.id, uid);
+          }
       ),
     );
+  }
+
+  // ✅ NEW: Auto-reject flow (no confirmation dialog needed!)
+  Future<void> _handleAutoRejectFlow(String orderId, String partnerId) async {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Order missed. Routing to next partner...'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          )
+      );
+    }
+
+    try {
+      // Hits your perfectly built reject_assignment.php silently in the background
+      await DeliveryService.rejectOrder(
+          orderId: orderId,
+          deliveryPartnerId: partnerId,
+          reason: 'Auto-rejected: Missed 30-second window'
+      );
+    } catch (e) {
+      debugPrint('Auto reject error: $e');
+    }
   }
 
   Future<void> _handleAcceptOrderFlow(DeliveryModel order, String partnerId) async {
@@ -658,31 +697,93 @@ class _SwipeToggleButtonState extends State<SwipeToggleButton> {
 }
 
 // ---------------------------------------------------------
-// 🛠️ WIDGET: Modern New Order Bottom Sheet
+// 🛠️ WIDGET: Modern New Order Bottom Sheet (With 30s Timer!)
 // ---------------------------------------------------------
 class NewOrderSheet extends StatefulWidget {
   final DeliveryModel order;
   final VoidCallback onAccept;
   final VoidCallback onReject;
-  const NewOrderSheet({super.key, required this.order, required this.onAccept, required this.onReject});
+  final VoidCallback onTimeout; // ✅ NEW callback
+
+  const NewOrderSheet({
+    super.key,
+    required this.order,
+    required this.onAccept,
+    required this.onReject,
+    required this.onTimeout,
+  });
+
   @override
   State<NewOrderSheet> createState() => _NewOrderSheetState();
 }
+
 class _NewOrderSheetState extends State<NewOrderSheet> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-  @override void initState() { super.initState(); _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true); }
-  @override void dispose() { _pulseController.dispose(); super.dispose(); }
+  late Timer _countdownTimer; // ✅ NEW: Timer
+  int _timeLeft = 30; // ✅ NEW: 30 seconds limit
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat(reverse: true);
+
+    // ✅ NEW: Start the 30-second countdown
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      setState(() {
+        if (_timeLeft > 0) {
+          _timeLeft--;
+        } else {
+          _countdownTimer.cancel();
+          widget.onTimeout(); // Triggers the auto-reject when it hits 0
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _countdownTimer.cancel(); // ✅ NEW: Clean up timer
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
       child: Container(
-        height: MediaQuery.of(context).size.height * 0.70,
+        height: MediaQuery.of(context).size.height * 0.75, // Slightly taller for timer
         decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24)), boxShadow: [BoxShadow(blurRadius: 20, color: Colors.black26)]),
         child: Column(
           children: [
-            Padding(padding: const EdgeInsets.only(top: 24, bottom: 10), child: Center(child: Row(mainAxisSize: MainAxisSize.min, children: [AnimatedBuilder(animation: _pulseController, builder: (context, child) { return Container(decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.5 * _pulseController.value), blurRadius: 10 * _pulseController.value, spreadRadius: 2 * _pulseController.value)]), child: child); }, child: const Icon(Icons.notifications_active, color: Colors.orange, size: 28)), const SizedBox(width: 12), const Text('NEW REQUEST', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 0.5))]))),
+            // ✅ NEW: Shrinking Time Progress Bar at the very top
+            LinearProgressIndicator(
+              value: _timeLeft / 30.0,
+              backgroundColor: Colors.grey.shade200,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                _timeLeft > 10 ? Colors.green : Colors.red, // Turns red at 10 seconds!
+              ),
+              minHeight: 6,
+            ),
+
+            Padding(
+                padding: const EdgeInsets.only(top: 20, bottom: 10),
+                child: Center(
+                    child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedBuilder(animation: _pulseController, builder: (context, child) { return Container(decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.5 * _pulseController.value), blurRadius: 10 * _pulseController.value, spreadRadius: 2 * _pulseController.value)]), child: child); }, child: const Icon(Icons.notifications_active, color: Colors.orange, size: 28)),
+                          const SizedBox(width: 12),
+                          const Text('NEW REQUEST', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, letterSpacing: 0.5)),
+                          const SizedBox(width: 12),
+                          // ✅ NEW: Text Countdown
+                          Text('00:${_timeLeft.toString().padLeft(2, '0')}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: _timeLeft > 10 ? Colors.black54 : Colors.red)),
+                        ]
+                    )
+                )
+            ),
+
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
