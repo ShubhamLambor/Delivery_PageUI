@@ -1,7 +1,7 @@
 // test/widget_test.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:deliveryui/main.dart';
+import 'package:TiffinityGo/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {

@@ -11,7 +11,7 @@ import '../earnings/earnings_page.dart';
 import 'nav_controller.dart';
 import '../auth/auth_controller.dart';
 import '../kyc/kyc_popup_dialog.dart';
-import 'package:deliveryui/screens/profile/profile_page.dart';
+import 'package:TiffinityGo/screens/profile/profile_page.dart';
 
 class BottomNav extends StatefulWidget {
   const BottomNav({super.key});

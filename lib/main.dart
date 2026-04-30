@@ -4,16 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 // --- Controllers ---
-import 'package:deliveryui/screens/auth/auth_controller.dart';
-import 'package:deliveryui/screens/auth/login_page.dart';
-import 'package:deliveryui/screens/deliveries/deliveries_controller.dart';
-import 'package:deliveryui/screens/earnings/earnings_controller.dart';
-import 'package:deliveryui/screens/home/home_controller.dart';
-import 'package:deliveryui/screens/nav/bottom_nav.dart';
-import 'package:deliveryui/screens/nav/nav_controller.dart';
-import 'package:deliveryui/screens/profile/profile_controller.dart';
-import 'package:deliveryui/screens/splash/splash_screen.dart';
-import 'package:deliveryui/screens/kyc/kyc_page.dart';
+import 'package:TiffinityGo/screens/auth/auth_controller.dart';
+import 'package:TiffinityGo/screens/auth/login_page.dart';
+import 'package:TiffinityGo/screens/deliveries/deliveries_controller.dart';
+import 'package:TiffinityGo/screens/earnings/earnings_controller.dart';
+import 'package:TiffinityGo/screens/home/home_controller.dart';
+import 'package:TiffinityGo/screens/nav/bottom_nav.dart';
+import 'package:TiffinityGo/screens/nav/nav_controller.dart';
+import 'package:TiffinityGo/screens/profile/profile_controller.dart';
+import 'package:TiffinityGo/screens/splash/splash_screen.dart';
+import 'package:TiffinityGo/screens/kyc/kyc_page.dart';
 import 'core/locale_provider.dart';
 import 'core/theme/app_theme.dart';
 

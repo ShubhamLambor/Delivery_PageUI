@@ -1,6 +1,6 @@
 // lib/screens/auth/forgot_password_page.dart
 
-import 'package:deliveryui/screens/auth/reset_password_page.dart';
+import 'package:TiffinityGo/screens/auth/reset_password_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'auth_controller.dart';

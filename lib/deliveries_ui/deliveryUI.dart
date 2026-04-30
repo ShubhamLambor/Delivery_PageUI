@@ -3,7 +3,7 @@ import '../screens/deliveries/deliveries_page.dart';
 import '../screens/earnings/earnings_page.dart';
 import '../screens/home/home_page.dart';
 import '../screens/profile/profile_page.dart';
-import 'package:deliveryui/screens/profile/profile_page.dart';
+import 'package:TiffinityGo/screens/profile/profile_page.dart';
 
 
 

@@ -1,8 +1,8 @@
 // lib/screens/delivery/order_tracking_screen.dart
-import 'package:deliveryui/screens/delivery/widgets/delivery_confirmation_screen.dart';
-import 'package:deliveryui/screens/delivery/widgets/order_status_stepper.dart';
-import 'package:deliveryui/screens/delivery/widgets/pickup_screen.dart';
-import 'package:deliveryui/screens/delivery/widgets/waiting_for_order_screen.dart';
+import 'package:TiffinityGo/screens/delivery/widgets/delivery_confirmation_screen.dart';
+import 'package:TiffinityGo/screens/delivery/widgets/order_status_stepper.dart';
+import 'package:TiffinityGo/screens/delivery/widgets/pickup_screen.dart';
+import 'package:TiffinityGo/screens/delivery/widgets/waiting_for_order_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'order_tracking_controller.dart';

@@ -1,6 +1,6 @@
 // lib/screens/profile/profile_page.dart
 
-import 'package:deliveryui/screens/profile/verification/otp_verification_page.dart';
+import 'package:TiffinityGo/screens/profile/verification/otp_verification_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
